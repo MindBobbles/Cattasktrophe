@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "Cat-Task-Trophe",
+    "slug": "cat-task-trophe",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "backgroundColor": "#0F380F"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.cattasktrophe.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0F380F"
+      },
+      "package": "com.cattasktrophe.app"
+    },
+    "web": {
+      "bundler": "metro",
+      "backgroundColor": "#0F380F"
+    }
+  }
+}
