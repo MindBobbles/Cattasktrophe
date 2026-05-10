@@ -13,6 +13,7 @@ import { rollRandomEvent } from './src/utils/randomEvents';
 import { sendNotification } from './src/utils/notifications';
 import { playClick } from './src/utils/sound';
 import { GB } from './src/constants/colors';
+import { TaskPriority } from './src/types';
 
 type Tab = 'cat' | 'tasks' | 'market';
 
@@ -68,14 +69,15 @@ export default function App() {
     );
   }
 
-  function handleAddTask(title: string, time: string, isSpecial: boolean, coins: number) {
+  function handleAddTask(title: string, time: string, priority: TaskPriority, coins: number) {
     game.addTask({
       title,
-      category:      isSpecial ? 'Special' : 'Custom',
+      category:      'Custom',
       scheduledTime: time,
       reward:        coins,
+      priority,
       isRecurring:   false,
-      isSpecial,
+      isSpecial:     false,
       isRevival:     false,
     });
   }
@@ -95,39 +97,38 @@ export default function App() {
             <CatScreen
               catState={game.catState}
               catHealth={game.catHealth}
+              catHunger={game.catHunger}
               catName={game.catName}
               coins={game.coins}
               completedToday={game.completedToday}
               totalTasks={game.totalTasks}
               catAlive={game.catAlive}
-              hasRevivalTasks={game.hasRevivalTasks}
-              revivalProgress={game.revivalProgress}
               catColor={game.catColor}
               catXP={game.catXP}
               catLevel={game.catLevel}
               catPersonality={game.catPersonality}
               pendingEvent={pendingEvent}
               foodQueue={game.foodQueue}
-              onStartRevival={game.startRevival}
+              sfxEnabled={game.sfxEnabled}
+              bgmEnabled={game.bgmEnabled}
               onGoToTasks={() => switchTab('tasks')}
               onGoToMarket={() => switchTab('market')}
               onEventDismissed={() => setPendingEvent(null)}
               onFeedCat={game.feedCat}
+              onToggleSFX={game.toggleSFX}
+              onToggleBGM={game.toggleBGM}
             />
           )}
 
           {activeTab === 'tasks' && (
             <TaskScreen
               regularTasks={game.regularTasks}
-              specialTasks={game.specialTasks}
-              revivalTasks={game.revivalTasks}
               completedToday={game.completedToday}
               catHealth={game.catHealth}
               catAlive={game.catAlive}
-              hasRevivalTasks={game.hasRevivalTasks}
-              revivalProgress={game.revivalProgress}
               onToggle={game.toggleTask}
               onDelete={game.deleteTask}
+              onDisputePriority={game.disputePriority}
               onAdd={handleAddTask}
             />
           )}

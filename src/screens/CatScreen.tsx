@@ -22,15 +22,15 @@ const MEOW_LINES = [
 ];
 
 const STATUS: Record<CatState, { title: string; sub: string }> = {
-  happy:     { title: 'PURRING ♥',       sub: 'All tasks done! Keep it up.' },
-  sad:       { title: 'SAD...',           sub: 'Your cat misses being fed. Do your tasks.' },
-  depressed: { title: 'DEPRESSED',        sub: 'Seriously. Get off the couch. Do something.' },
-  cocaine:   { title: 'CATNIP CRAZE!!',  sub: 'Your cat is absolutely ZOOMING right now.' },
-  hospital:  { title: 'IN HOSPITAL',     sub: 'Your neglect put them here. Fix it.' },
-  deathbed:  { title: '💀 FLATLINE',     sub: 'Your cat is dead. You did this. Buy a revive.' },
+  happy:     { title: 'PURRING ♥',      sub: 'Happy and fed! Keep the tasks going.' },
+  sad:       { title: 'SAD...',          sub: 'Needs food. Check the plate below.' },
+  depressed: { title: 'DEPRESSED',       sub: 'Low health AND hungry. Feed immediately.' },
+  cocaine:   { title: 'CATNIP CRAZE!!', sub: 'Your cat is absolutely ZOOMING right now.' },
+  hospital:  { title: 'IN HOSPITAL',    sub: 'Critical condition. Buy medicine in market.' },
+  deathbed:  { title: '💀 FLATLINE',    sub: 'Your cat died. Buy a Revive Potion (50🪙).' },
 };
 
-// Pixel poop — 8×8 grid rendered at 6px per cell
+// Pixel poop — 8×8 grid at 6px/cell
 const POOP_SPRITE = [
   [0,0,1,1,1,0,0,0],
   [0,1,1,1,1,1,0,0],
@@ -42,6 +42,62 @@ const POOP_SPRITE = [
   [0,0,0,0,0,0,0,0],
 ];
 const POOP_COLOR = '#6B3A2A';
+
+// ── Evolution pixel overlays ─────────────────────────────────────────────────
+// Worker Kitty hard hat — 10×5 grid at 8px/cell
+const HARDHAT: number[][] = [
+  [0,0,0,1,1,1,1,1,0,0],
+  [0,0,1,1,1,1,1,1,1,0],
+  [0,1,2,2,2,2,2,2,1,1],
+  [1,1,1,1,1,1,1,1,1,1],
+  [1,1,1,1,1,1,1,1,1,1],
+];
+const HH_COLORS: Record<number, string> = { 0: 'transparent', 1: '#FFD700', 2: '#E08000' };
+
+// Boss Kitty crown — 10×5 grid at 8px/cell
+const CROWN: number[][] = [
+  [1,0,0,1,0,0,1,0,0,1],
+  [1,1,0,1,1,0,1,1,0,1],
+  [1,1,3,1,4,3,1,4,1,1],
+  [2,2,2,2,2,2,2,2,2,2],
+  [2,2,2,2,2,2,2,2,2,2],
+];
+const CR_COLORS: Record<number, string> = { 0: 'transparent', 1: '#FFD700', 2: '#B8860B', 3: '#FF2244', 4: '#4488FF' };
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export interface RandomEventDisplay {
+  type: string;
+  emoji: string;
+  title: string;
+  message: string;
+  color: string;
+}
+
+interface Props {
+  catState: CatState;
+  catHealth: number;
+  catHunger: number;
+  catName: string;
+  coins: number;
+  completedToday: number;
+  totalTasks: number;
+  catAlive: boolean;
+  catColor: string;
+  catXP: number;
+  catLevel: number;
+  catPersonality: string;
+  pendingEvent: RandomEventDisplay | null;
+  foodQueue: QueuedFood[];
+  sfxEnabled: boolean;
+  bgmEnabled: boolean;
+  onGoToTasks: () => void;
+  onGoToMarket: () => void;
+  onEventDismissed: () => void;
+  onFeedCat: (foodId: string) => void;
+  onToggleSFX: () => void;
+  onToggleBGM: () => void;
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -57,45 +113,30 @@ function formatDate(d: Date): string {
   return `${days[d.getDay()]} ${d.getDate()} ${months[d.getMonth()]}`;
 }
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ─── Pixel Grid ───────────────────────────────────────────────────────────────
 
-export interface RandomEventDisplay {
-  type: string;
-  emoji: string;
-  title: string;
-  message: string;
-  color: string;
-}
-
-interface Props {
-  catState: CatState;
-  catHealth: number;
-  catName: string;
-  coins: number;
-  completedToday: number;
-  totalTasks: number;
-  catAlive: boolean;
-  hasRevivalTasks: boolean;
-  revivalProgress: number;
-  catColor: string;
-  catXP: number;
-  catLevel: number;
-  catPersonality: string;
-  pendingEvent: RandomEventDisplay | null;
-  foodQueue: QueuedFood[];
-  onStartRevival: () => void;
-  onGoToTasks: () => void;
-  onGoToMarket: () => void;
-  onEventDismissed: () => void;
-  onFeedCat: (foodId: string) => void;
+function PixelGrid({ grid, colors, cellSize }: {
+  grid: number[][];
+  colors: Record<number, string>;
+  cellSize: number;
+}) {
+  return (
+    <View>
+      {grid.map((row, ri) => (
+        <View key={ri} style={{ flexDirection: 'row' }}>
+          {row.map((cell, ci) => (
+            <View key={ci} style={{ width: cellSize, height: cellSize, backgroundColor: colors[cell] ?? 'transparent' }} />
+          ))}
+        </View>
+      ))}
+    </View>
+  );
 }
 
 // ─── Draggable Food Item ──────────────────────────────────────────────────────
 
-function DraggableFoodItem({
-  food, onFeed,
-}: { food: QueuedFood; onFeed: (id: string) => void }) {
-  const pan = useRef(new Animated.ValueXY()).current;
+function DraggableFoodItem({ food, onFeed }: { food: QueuedFood; onFeed: (id: string) => void }) {
+  const pan   = useRef(new Animated.ValueXY()).current;
   const scale = useRef(new Animated.Value(1)).current;
 
   const panResponder = useRef(PanResponder.create({
@@ -109,12 +150,11 @@ function DraggableFoodItem({
     ),
     onPanResponderRelease: (_, gesture) => {
       Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start();
-      // dy < -120 means dragged upward into cat zone
       if (gesture.dy < -120) {
         playEarnCoin();
         Animated.parallel([
-          Animated.timing(pan.y, { toValue: -320, duration: 250, useNativeDriver: false }),
-          Animated.timing(scale, { toValue: 0, duration: 250, useNativeDriver: true }),
+          Animated.timing(pan.y,  { toValue: -320, duration: 250, useNativeDriver: false }),
+          Animated.timing(scale,  { toValue: 0,    duration: 250, useNativeDriver: true }),
         ]).start(() => {
           onFeed(food.id);
           pan.setValue({ x: 0, y: 0 });
@@ -128,58 +168,47 @@ function DraggableFoodItem({
 
   return (
     <Animated.View
-      style={[
-        foodStyles.plate,
-        {
-          transform: [
-            { translateX: pan.x },
-            { translateY: pan.y },
-            { scale },
-          ],
-        },
-      ]}
+      style={[foodStyles.plate, { transform: [{ translateX: pan.x }, { translateY: pan.y }, { scale }] }]}
       {...panResponder.panHandlers}
     >
       <View style={foodStyles.plateCircle}>
         <Text style={foodStyles.foodEmoji}>{food.emoji}</Text>
       </View>
       <Text style={foodStyles.foodName} numberOfLines={1}>{food.name}</Text>
+      <Text style={foodStyles.foodStat}>
+        {food.hunger > 0 ? `+${food.hunger}🍽️` : `+${food.health}❤️`}
+      </Text>
     </Animated.View>
   );
 }
 
 const foodStyles = StyleSheet.create({
-  plate: {
-    alignItems: 'center', gap: 4,
-    width: 72, zIndex: 10,
-  },
-  plateCircle: {
-    width: 60, height: 60, borderRadius: 30,
-    backgroundColor: '#1a3a1a', borderWidth: 3, borderColor: GB.dark,
-    alignItems: 'center', justifyContent: 'center',
-  },
+  plate: { alignItems: 'center', gap: 2, width: 72, zIndex: 10 },
+  plateCircle: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#1a3a1a', borderWidth: 3, borderColor: GB.dark, alignItems: 'center', justifyContent: 'center' },
   foodEmoji: { fontSize: 28 },
   foodName: { fontFamily: 'monospace', fontSize: 9, color: GB.dark, textAlign: 'center', width: 70 },
+  foodStat: { fontFamily: 'monospace', fontSize: 9, color: GB.medium, textAlign: 'center' },
 });
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function CatScreen({
-  catState, catHealth, catName, coins,
+  catState, catHealth, catHunger, catName, coins,
   completedToday, totalTasks, catAlive,
-  hasRevivalTasks, revivalProgress,
   catColor, catXP, catLevel, catPersonality,
   pendingEvent, foodQueue,
-  onStartRevival, onGoToTasks, onGoToMarket,
+  sfxEnabled, bgmEnabled,
+  onGoToTasks, onGoToMarket,
   onEventDismissed, onFeedCat,
+  onToggleSFX, onToggleBGM,
 }: Props) {
 
-  const [now, setNow] = useState(new Date());
-  const [meowLine, setMeowLine] = useState('');
+  const [now, setNow]             = useState(new Date());
+  const [meowLine, setMeowLine]   = useState('');
   const [showBubble, setShowBubble] = useState(false);
-  const [showPoop, setShowPoop] = useState(false);
-  const [showHat, setShowHat] = useState(false);
-  const [foodOffset, setFoodOffset] = useState(0); // carousel offset
+  const [showPoop, setShowPoop]   = useState(false);
+  const [showHat, setShowHat]     = useState(false);
+  const [foodOffset, setFoodOffset] = useState(0);
 
   const flashAnim  = useRef(new Animated.Value(1)).current;
   const shakeAnim  = useRef(new Animated.Value(0)).current;
@@ -194,10 +223,14 @@ export default function CatScreen({
     return () => clearInterval(id);
   }, []);
 
-  // ── Background music ────────────────────────────────────────────────────────
-  useEffect(() => { startBGM(); return () => stopBGM(); }, []);
+  // ── BGM — controlled by bgmEnabled prop ─────────────────────────────────────
+  useEffect(() => {
+    if (bgmEnabled) startBGM();
+    else stopBGM();
+    return () => stopBGM();
+  }, [bgmEnabled]);
 
-  // ── Hospital / deathbed flash ───────────────────────────────────────────────
+  // ── Hospital/deathbed flash ─────────────────────────────────────────────────
   useEffect(() => {
     flashLoop.current?.stop();
     flashAnim.setValue(1);
@@ -228,8 +261,6 @@ export default function CatScreen({
         Animated.timing(shakeAnim, { toValue:   0, duration: 55, useNativeDriver: true }),
       ]).start();
     }
-
-    // Happy activity overlays
     if (pendingEvent.type === 'cowboy_hat') {
       setShowHat(true);
       const isTimid = ['lazy', 'grumpy', 'sweet'].includes(catPersonality);
@@ -265,17 +296,21 @@ export default function CatScreen({
   const screenBg   = STATE_SCREEN_BG[catState]  ?? GB.light;
   const labelColor = STATE_LABEL_COLOR[catState] ?? GB.darkest;
   const { title, sub } = STATUS[catState];
-  const { emoji: evoEmoji, stage } = getCatEvolution(catLevel);
+  const { emoji: evoEmoji, stage, tier } = getCatEvolution(catLevel);
   const xpProgress = (catXP % 50) / 50;
 
   const healthBarColor =
-    catState === 'happy'    ? GB.light   :
-    catState === 'sad'      ? GB.medium  :
-    catState === 'depressed'? '#6A8060'  :
-    catState === 'cocaine'  ? '#C8D820'  :
-    catState === 'hospital' ? '#608060'  : '#404040';
+    catState === 'happy'     ? GB.light   :
+    catState === 'sad'       ? GB.medium  :
+    catState === 'depressed' ? '#6A8060'  :
+    catState === 'cocaine'   ? '#C8D820'  :
+    catState === 'hospital'  ? '#608060'  : '#404040';
 
-  // Food carousel slice (show 3 at a time)
+  const hungerPercent = Math.max(0, Math.min(100, catHunger));
+  const hungerColor =
+    hungerPercent >= 60 ? '#52C060' :
+    hungerPercent >= 30 ? '#C0A030' : '#C04040';
+
   const visibleFood = foodQueue.slice(foodOffset, foodOffset + 3);
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -288,9 +323,7 @@ export default function CatScreen({
           styles.eventBanner,
           {
             backgroundColor: pendingEvent.color,
-            transform: [{
-              translateY: eventAnim.interpolate({ inputRange: [0, 1], outputRange: [-90, 0] }),
-            }],
+            transform: [{ translateY: eventAnim.interpolate({ inputRange: [0, 1], outputRange: [-90, 0] }) }],
             opacity: eventAnim,
           },
         ]}>
@@ -310,8 +343,23 @@ export default function CatScreen({
             <Text style={styles.title}>CAT-TASK-TROPHE</Text>
             <Text style={styles.clock}>{formatClock(now)}  {formatDate(now)}</Text>
           </View>
-          <View style={styles.coinBadge}>
-            <Text style={styles.coinText}>🪙 {coins}</Text>
+          {/* Coins + audio toggles */}
+          <View style={styles.topRight}>
+            <TouchableOpacity
+              style={[styles.ctrlBtn, !bgmEnabled && styles.ctrlOff]}
+              onPress={() => { playClick(); onToggleBGM(); }}
+            >
+              <Text style={styles.ctrlBtnText}>{bgmEnabled ? '♪' : '♪̶'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.ctrlBtn, !sfxEnabled && styles.ctrlOff]}
+              onPress={() => { onToggleSFX(); }}
+            >
+              <Text style={styles.ctrlBtnText}>{sfxEnabled ? '🔊' : '🔇'}</Text>
+            </TouchableOpacity>
+            <View style={styles.coinBadge}>
+              <Text style={styles.coinText}>🪙 {coins}</Text>
+            </View>
           </View>
         </View>
 
@@ -326,30 +374,41 @@ export default function CatScreen({
               </Animated.View>
             )}
 
-            {/* Cowboy hat on cat's head */}
+            {/* Cowboy hat (random event) */}
             {showHat && (
               <View style={styles.hatOverlay}>
                 <Text style={styles.hatEmoji}>🤠</Text>
               </View>
             )}
 
-            {/* Cat sprite — shakes on dog attack */}
+            {/* Evolution overlay — Worker Kitty hard hat */}
+            {tier === 'worker' && !showHat && (
+              <View style={styles.evoOverlay}>
+                <PixelGrid grid={HARDHAT} colors={HH_COLORS} cellSize={7} />
+              </View>
+            )}
+
+            {/* Evolution overlay — Boss Kitty crown */}
+            {tier === 'boss' && !showHat && (
+              <View style={styles.evoOverlay}>
+                <PixelGrid grid={CROWN} colors={CR_COLORS} cellSize={7} />
+              </View>
+            )}
+
+            {/* Cat sprite */}
             <Animated.View style={[styles.spriteArea, { transform: [{ translateX: shakeAnim }] }]}>
               <TouchableOpacity onPress={handleCatTap} activeOpacity={0.85}>
                 <CatSprite catState={catState} catColor={catColor} />
               </TouchableOpacity>
             </Animated.View>
 
-            {/* Poop in frame bottom-right */}
+            {/* Poop */}
             {showPoop && (
               <View style={styles.poopArea}>
                 {POOP_SPRITE.map((row, ri) => (
                   <View key={ri} style={{ flexDirection: 'row' }}>
                     {row.map((cell, ci) => (
-                      <View key={ci} style={{
-                        width: 6, height: 6,
-                        backgroundColor: cell === 1 ? POOP_COLOR : 'transparent',
-                      }} />
+                      <View key={ci} style={{ width: 6, height: 6, backgroundColor: cell === 1 ? POOP_COLOR : 'transparent' }} />
                     ))}
                   </View>
                 ))}
@@ -381,6 +440,20 @@ export default function CatScreen({
         {/* ── Health bar ── */}
         <HealthBar health={catHealth} catState={catState} barColor={healthBarColor} />
 
+        {/* ── Hunger bar ── */}
+        <View style={styles.statBarRow}>
+          <Text style={styles.statBarLabel}>🍽️</Text>
+          <View style={styles.statBarTrack}>
+            <View style={[styles.statBarFill, { width: `${hungerPercent}%`, backgroundColor: hungerColor }]} />
+            {Array.from({ length: 9 }).map((_, i) => (
+              <View key={i} style={[styles.statBarNotch, { left: `${(i + 1) * 10}%` }]} />
+            ))}
+          </View>
+          <Text style={[styles.statBarVal, { color: hungerColor }]}>
+            {hungerPercent < 30 ? '😿' : hungerPercent < 60 ? '😐' : '😺'}
+          </Text>
+        </View>
+
         {/* ── Status sub ── */}
         <Text style={[styles.subStatus, (catState === 'hospital' || catState === 'deathbed') && styles.subDanger]}>
           {sub}
@@ -395,7 +468,7 @@ export default function CatScreen({
         {/* ── Food plate carousel ── */}
         {foodQueue.length > 0 && (
           <View style={styles.plateSection}>
-            <Text style={styles.plateSectionTitle}>DRAG FOOD TO FEED ↑</Text>
+            <Text style={styles.plateSectionTitle}>DRAG FOOD TO FEED CAT ↑</Text>
             <View style={styles.plateRow}>
               <TouchableOpacity
                 style={styles.plateArrow}
@@ -426,32 +499,12 @@ export default function CatScreen({
           <View style={styles.emergencyBox}>
             <Text style={styles.emergencyTitle}>💀  YOUR CAT IS DEAD  💀</Text>
             <Text style={styles.emergencyBody}>
-              You ignored them for too long.{'\n'}
-              Buy a Revive Potion (120🪙) or a New Cat (200🪙) in the Market.
+              You let them starve and fall apart.{'\n'}
+              Buy a Revive Potion (50🪙) in the Market.
             </Text>
             <TouchableOpacity style={styles.marketBtn} onPress={() => { playClick(); onGoToMarket(); }}>
               <Text style={styles.marketBtnText}>GO TO MARKET →</Text>
             </TouchableOpacity>
-          </View>
-        )}
-
-        {/* ── Revival ── */}
-        {catAlive && (catState === 'hospital' || catState === 'depressed') && (
-          <View style={styles.revivalBox}>
-            <Text style={styles.revivalTitle}>⚠  EMERGENCY TASKS</Text>
-            <Text style={styles.revivalBody}>Complete revival tasks to stabilise {catName}.</Text>
-            {!hasRevivalTasks ? (
-              <TouchableOpacity style={styles.revivalBtn} onPress={() => { playClick(); onStartRevival(); }}>
-                <Text style={styles.revivalBtnText}>START REVIVAL</Text>
-              </TouchableOpacity>
-            ) : (
-              <>
-                <Text style={styles.revivalProgress}>Revival: {revivalProgress}/5 done</Text>
-                <TouchableOpacity style={styles.goTasksBtn} onPress={() => { playClick(); onGoToTasks(); }}>
-                  <Text style={styles.goTasksBtnText}>GO TO TASKS →</Text>
-                </TouchableOpacity>
-              </>
-            )}
           </View>
         )}
 
@@ -486,6 +539,15 @@ const styles = StyleSheet.create({
   topBar: { width: '90%', flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   title: { fontFamily: 'monospace', fontSize: 14, fontWeight: 'bold', color: GB.light, letterSpacing: 2 },
   clock: { fontFamily: 'monospace', fontSize: 10, color: GB.dark, letterSpacing: 0.5, marginTop: 2 },
+
+  topRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  ctrlBtn: {
+    width: 30, height: 30, borderRadius: 4, borderWidth: 1, borderColor: GB.dark,
+    alignItems: 'center', justifyContent: 'center', backgroundColor: '#0a200a',
+  },
+  ctrlOff: { borderColor: '#333', backgroundColor: '#060e06', opacity: 0.5 },
+  ctrlBtnText: { fontSize: 13 },
+
   coinBadge: {
     backgroundColor: '#1a2e0a', borderWidth: 1, borderColor: GB.dark,
     borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4,
@@ -505,16 +567,13 @@ const styles = StyleSheet.create({
   },
   spriteArea: { alignItems: 'center', justifyContent: 'center' },
 
-  // Hat overlay — sits just above the cat sprite
-  hatOverlay: {
-    position: 'absolute', top: 10, alignSelf: 'center', zIndex: 20,
-  },
+  hatOverlay: { position: 'absolute', top: 10, alignSelf: 'center', zIndex: 20 },
   hatEmoji: { fontSize: 36 },
 
-  // Poop in bottom-right corner of screen
-  poopArea: {
-    position: 'absolute', bottom: 38, right: 12, zIndex: 15,
-  },
+  // Evolution overlay — pixel art hat / crown sits above sprite
+  evoOverlay: { position: 'absolute', top: 12, alignSelf: 'center', zIndex: 18 },
+
+  poopArea: { position: 'absolute', bottom: 38, right: 12, zIndex: 15 },
 
   speechBubble: {
     position: 'absolute', top: 8, right: 8, zIndex: 10,
@@ -530,31 +589,28 @@ const styles = StyleSheet.create({
 
   identityRow: { width: '90%', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   catName: { fontFamily: 'monospace', fontSize: 16, fontWeight: 'bold', color: GB.medium, letterSpacing: 1 },
-  levelBadge: {
-    backgroundColor: '#0a200a', borderWidth: 1, borderColor: GB.dark,
-    borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3,
-  },
+  levelBadge: { backgroundColor: '#0a200a', borderWidth: 1, borderColor: GB.dark, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
   levelText: { fontFamily: 'monospace', fontSize: 11, color: GB.light },
 
-  xpBarBg: {
-    width: '90%', height: 14, backgroundColor: '#0a200a',
-    borderWidth: 1, borderColor: GB.dark, borderRadius: 3,
-    overflow: 'hidden', justifyContent: 'center',
-  },
+  xpBarBg: { width: '90%', height: 14, backgroundColor: '#0a200a', borderWidth: 1, borderColor: GB.dark, borderRadius: 3, overflow: 'hidden', justifyContent: 'center' },
   xpBarFill: { position: 'absolute', left: 0, top: 0, bottom: 0, backgroundColor: GB.dark, borderRadius: 2 },
   xpLabel: { fontFamily: 'monospace', fontSize: 9, color: GB.medium, textAlign: 'center', letterSpacing: 0.5 },
+
+  // Hunger bar (mirrors HealthBar layout)
+  statBarRow: { width: '90%', flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 0 },
+  statBarLabel: { fontSize: 14, width: 24, textAlign: 'center' },
+  statBarTrack: { flex: 1, height: 16, backgroundColor: GB.darkest, borderWidth: 2, borderColor: GB.dark, borderRadius: 2, overflow: 'hidden', position: 'relative' },
+  statBarFill: { position: 'absolute', top: 0, left: 0, bottom: 0, borderRadius: 1 },
+  statBarNotch: { position: 'absolute', top: 0, bottom: 0, width: 2, backgroundColor: GB.darkest, opacity: 0.5 },
+  statBarVal: { fontFamily: 'monospace', fontSize: 14, width: 28, textAlign: 'right' },
 
   subStatus: { fontFamily: 'monospace', fontSize: 12, color: GB.medium, textAlign: 'center', letterSpacing: 0.3, paddingHorizontal: 20 },
   subDanger: { color: '#CC6666' },
   progress: { fontFamily: 'monospace', fontSize: 12, color: GB.dark, letterSpacing: 0.3 },
   tapHint: { fontFamily: 'monospace', fontSize: 10, color: GB.dark, letterSpacing: 0.5 },
 
-  // Food plate section
-  plateSection: {
-    width: '90%', alignItems: 'center', gap: 8,
-    backgroundColor: '#0a1a0a', borderWidth: 2, borderColor: GB.dark,
-    borderRadius: 8, padding: 12,
-  },
+  // Food plate
+  plateSection: { width: '90%', alignItems: 'center', gap: 8, backgroundColor: '#0a1a0a', borderWidth: 2, borderColor: GB.dark, borderRadius: 8, padding: 12 },
   plateSectionTitle: { fontFamily: 'monospace', fontSize: 10, color: GB.dark, letterSpacing: 1 },
   plateRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   plateItems: { flex: 1, flexDirection: 'row', justifyContent: 'space-around', gap: 8 },
@@ -562,24 +618,13 @@ const styles = StyleSheet.create({
   plateArrowText: { fontFamily: 'monospace', fontSize: 20, color: GB.medium },
   plateCount: { fontFamily: 'monospace', fontSize: 9, color: GB.dark },
 
-  // Emergency
-  emergencyBox: {
-    width: '90%', backgroundColor: '#1a0000', borderWidth: 2,
-    borderColor: '#CC0000', borderRadius: 6, padding: 16,
-    alignItems: 'center', gap: 10,
-  },
+  // Dead
+  emergencyBox: { width: '90%', backgroundColor: '#1a0000', borderWidth: 2, borderColor: '#CC0000', borderRadius: 6, padding: 16, alignItems: 'center', gap: 10 },
   emergencyTitle: { fontFamily: 'monospace', fontSize: 14, fontWeight: 'bold', color: '#FF4444', letterSpacing: 2, textAlign: 'center' },
   emergencyBody: { fontFamily: 'monospace', fontSize: 12, color: '#AA6666', textAlign: 'center', lineHeight: 18 },
   marketBtn: { backgroundColor: '#4A0000', borderWidth: 2, borderColor: '#CC0000', borderRadius: 4, paddingHorizontal: 24, paddingVertical: 10 },
   marketBtnText: { fontFamily: 'monospace', fontSize: 13, fontWeight: 'bold', color: '#FF6666', letterSpacing: 2 },
 
-  // Revival
-  revivalBox: { width: '90%', backgroundColor: '#1a0a0a', borderWidth: 2, borderColor: '#4A0A0A', borderRadius: 6, padding: 16, alignItems: 'center', gap: 10 },
-  revivalTitle: { fontFamily: 'monospace', fontSize: 13, fontWeight: 'bold', color: '#CC4444', letterSpacing: 2 },
-  revivalBody: { fontFamily: 'monospace', fontSize: 12, color: '#AA8888', textAlign: 'center', lineHeight: 18 },
-  revivalBtn: { backgroundColor: '#4A0A0A', borderWidth: 2, borderColor: '#CC4444', borderRadius: 4, paddingHorizontal: 24, paddingVertical: 10 },
-  revivalBtnText: { fontFamily: 'monospace', fontSize: 13, fontWeight: 'bold', color: '#FF6666', letterSpacing: 2 },
-  revivalProgress: { fontFamily: 'monospace', fontSize: 13, color: '#CC4444' },
   goTasksBtn: { borderWidth: 2, borderColor: GB.dark, borderRadius: 4, paddingHorizontal: 20, paddingVertical: 10 },
   goTasksBtnText: { fontFamily: 'monospace', fontSize: 13, color: GB.medium, letterSpacing: 1 },
 });

@@ -53,6 +53,7 @@ export default function OnboardingScreen({ onComplete }: Props) {
         category: p.category,
         scheduledTime: times[p.id] ?? p.defaultTime,
         reward: p.reward,
+        priority: 'medium' as const,
         completed: false,
         isRecurring: true,
         isSpecial: false,

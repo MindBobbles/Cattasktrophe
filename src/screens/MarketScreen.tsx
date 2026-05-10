@@ -43,7 +43,7 @@ export default function MarketScreen({ items, coins, catAlive, onBuy }: Props) {
       {!catAlive && (
         <View style={styles.deadBanner}>
           <Text style={styles.deadBannerText}>
-            💀  YOUR CAT IS DEAD — buy Revive Potion or a New Cat below
+            💀  YOUR CAT IS DEAD — buy Revive Potion (50🪙) below
           </Text>
         </View>
       )}
@@ -78,7 +78,7 @@ export default function MarketScreen({ items, coins, catAlive, onBuy }: Props) {
 
         <Text style={styles.hint}>
           Complete tasks to earn coins.{'\n'}
-          Special tasks pay more 🪙
+          🔴 High = 5🪙  ·  🟡 Medium = 3🪙  ·  🟢 Low = 2🪙
         </Text>
       </ScrollView>
     </SafeAreaView>

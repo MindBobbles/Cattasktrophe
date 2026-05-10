@@ -63,12 +63,10 @@ export function getCatLevel(xp: number): number {
   return Math.floor(xp / 50) + 1;
 }
 
-export function getCatEvolution(level: number): { stage: string; emoji: string } {
-  if (level >= 20) return { stage: 'Legendary', emoji: '👑' };
-  if (level >= 15) return { stage: 'Ancient',   emoji: '⭐' };
-  if (level >= 10) return { stage: 'Wise',      emoji: '😼' };
-  if (level >= 5)  return { stage: 'Grown',     emoji: '🐈' };
-  return                  { stage: 'Kitty',     emoji: '🐱' };
+export function getCatEvolution(level: number): { stage: string; emoji: string; tier: 'base' | 'worker' | 'boss' } {
+  if (level >= 10) return { stage: 'Boss Kitty',   emoji: '👑', tier: 'boss'   };
+  if (level >= 5)  return { stage: 'Worker Kitty', emoji: '⚙️', tier: 'worker' };
+  return                  { stage: 'Kitty',         emoji: '🐱', tier: 'base'   };
 }
 
 export const STATE_SCREEN_BG: Record<string, string> = {

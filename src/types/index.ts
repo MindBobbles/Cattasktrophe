@@ -21,7 +21,7 @@ export interface Task {
   isSpecial: boolean;
   isRevival: boolean;
   createdAt: string;
-  priority?: TaskPriority;    // default 'medium'
+  priority?: TaskPriority;    // auto-assigned; default 'medium'
 }
 
 export interface MarketItem {
@@ -30,22 +30,24 @@ export interface MarketItem {
   description: string;
   cost: number;
   emoji: string;
-  effect: 'health_small' | 'health_medium' | 'health_large' | 'revive' | 'new_cat' | 'catnip';
+  effect: 'hunger_small' | 'hunger_medium' | 'health_direct' | 'revive' | 'catnip';
   xpReward: number;
 }
 
 export interface QueuedFood {
   id: string;
-  itemId: string;   // 'snack' | 'meal' | 'medicine'
+  itemId: string;
   name: string;
   emoji: string;
-  health: number;
+  hunger: number;   // hunger restored when fed (0 for medicine)
+  health: number;   // health restored directly when fed (0 for food items)
 }
 
 export interface GameState {
   setupComplete: boolean;
   catName: string;
   catHealth: number;          // 0–100
+  catHunger: number;          // 0–100  (separate hunger stat)
   coins: number;
   catAlive: boolean;
   catStateOverride: CatState | null;
@@ -55,5 +57,7 @@ export interface GameState {
   catColor: string;
   catXP: number;
   catPersonality: string;
-  foodQueue: QueuedFood[];    // food waiting to be fed to cat
+  foodQueue: QueuedFood[];
+  sfxEnabled: boolean;
+  bgmEnabled: boolean;
 }

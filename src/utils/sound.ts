@@ -10,7 +10,20 @@ function ctx(): AudioContext | null {
   } catch { return null; }
 }
 
+// ── Enable flags ──────────────────────────────────────────────────────────────
+let _sfxEnabled = true;
+let _bgmEnabled = true;
+
+export function setSFXEnabled(v: boolean) { _sfxEnabled = v; }
+export function setBGMEnabled(v: boolean) {
+  _bgmEnabled = v;
+  if (!v && bgmPlaying) stopBGM();
+  else if (v && !bgmPlaying) startBGM();
+}
+
+// ── Core beep ─────────────────────────────────────────────────────────────────
 function beep(freq: number, dur: number, vol = 0.2, type: OscillatorType = 'square', start = 0) {
+  if (!_sfxEnabled) return;
   const c = ctx();
   if (!c) return;
   const osc = c.createOscillator();
@@ -24,9 +37,11 @@ function beep(freq: number, dur: number, vol = 0.2, type: OscillatorType = 'squa
   osc.stop(c.currentTime + start + dur + 0.01);
 }
 
+// ── SFX functions ─────────────────────────────────────────────────────────────
 export function playClick() { beep(700, 0.06, 0.12); }
 
 export function playMeow() {
+  if (!_sfxEnabled) return;
   const c = ctx(); if (!c) return;
   const osc = c.createOscillator();
   const g = c.createGain();
@@ -115,6 +130,7 @@ function scheduleBGMCycle() {
 }
 
 export function startBGM() {
+  if (!_bgmEnabled) return;
   if (bgmPlaying) return;
   const c = ctx(); if (!c) return;
   bgmPlaying = true;

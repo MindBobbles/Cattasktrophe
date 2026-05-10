@@ -1,23 +1,22 @@
 import { useState, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Task, GameState, CatState, MarketItem, QueuedFood } from '../types';
-import { REVIVAL_TASK_POOL } from '../constants/sprites';
+import { Task, TaskPriority, GameState, CatState, MarketItem, QueuedFood } from '../types';
 import {
   randomCatColor, randomPersonality, getCatLevel,
 } from '../constants/colors';
 import {
   requestNotificationPermission, sendNotification, scheduleNightlyReminder,
 } from '../utils/notifications';
+import { setSFXEnabled, setBGMEnabled } from '../utils/sound';
 
 const STORAGE_KEY = '@cat_task_trophe_v3';
 
 export const MARKET_ITEMS: MarketItem[] = [
-  { id: 'snack',    name: 'Cat Snack',      description: '+10 health',             cost: 15,  emoji: '🐟', effect: 'health_small',  xpReward: 5  },
-  { id: 'meal',     name: 'Premium Meal',   description: '+25 health',             cost: 30,  emoji: '🍣', effect: 'health_medium', xpReward: 10 },
-  { id: 'medicine', name: 'Cat Medicine',   description: '+40 health',             cost: 60,  emoji: '💊', effect: 'health_large',  xpReward: 15 },
-  { id: 'catnip',   name: 'Catnip Toy',     description: 'CATNIP CRAZE for 2min', cost: 40,  emoji: '🌿', effect: 'catnip',        xpReward: 3  },
-  { id: 'revive',   name: 'Revive Potion',  description: 'Bring cat back to life', cost: 120, emoji: '✨', effect: 'revive',        xpReward: 20 },
-  { id: 'new_cat',  name: 'New Cat',        description: 'Fresh start (keep coins)',cost: 200, emoji: '🐱', effect: 'new_cat',      xpReward: 0  },
+  { id: 'snack',    name: 'Cat Snack',     description: '+30 hunger',             cost: 15,  emoji: '🐟', effect: 'hunger_small',  xpReward: 5  },
+  { id: 'meal',     name: 'Premium Meal',  description: '+60 hunger',             cost: 30,  emoji: '🍣', effect: 'hunger_medium', xpReward: 10 },
+  { id: 'medicine', name: 'Cat Medicine',  description: '+50 HP (direct)',        cost: 30,  emoji: '💊', effect: 'health_direct',  xpReward: 15 },
+  { id: 'catnip',   name: 'Catnip Toy',    description: 'CATNIP CRAZE for 2min', cost: 40,  emoji: '🌿', effect: 'catnip',         xpReward: 3  },
+  { id: 'revive',   name: 'Revive Potion', description: 'Bring cat back to life', cost: 50,  emoji: '✨', effect: 'revive',         xpReward: 20 },
 ];
 
 function todayString(): string {
@@ -41,7 +40,8 @@ export function getCatState(health: number, alive: boolean, override: CatState |
 const DEFAULT: GameState = {
   setupComplete: false,
   catName: 'Mittens',
-  catHealth: 65,
+  catHealth: 80,
+  catHunger: 80,
   coins: 0,
   catAlive: true,
   catStateOverride: null,
@@ -52,6 +52,8 @@ const DEFAULT: GameState = {
   catXP: 0,
   catPersonality: 'playful',
   foodQueue: [],
+  sfxEnabled: true,
+  bgmEnabled: true,
 };
 
 export function useGameState() {
@@ -62,7 +64,7 @@ export function useGameState() {
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY).then(raw => {
       if (!raw) { setLoaded(true); return; }
-      const saved: GameState = JSON.parse(raw);
+      const saved: any = JSON.parse(raw);
 
       // Back-fill missing fields from older saves
       const filled: GameState = {
@@ -70,8 +72,24 @@ export function useGameState() {
         catXP: 0,
         catPersonality: 'playful',
         foodQueue: [],
+        catHunger: 80,
+        sfxEnabled: true,
+        bgmEnabled: true,
         ...saved,
       };
+
+      // Migrate food queue items to new schema (hunger + health)
+      filled.foodQueue = (filled.foodQueue ?? []).map((f: any) => ({
+        id: f.id,
+        itemId: f.itemId ?? '',
+        name: f.name ?? '',
+        emoji: f.emoji ?? '🍽️',
+        hunger: typeof f.hunger === 'number' ? f.hunger : 0,
+        health: typeof f.health === 'number' && !f.hunger ? f.health : (typeof f.health === 'number' ? f.health : 0),
+      }));
+
+      // Filter out isRevival and isSpecial tasks (features removed)
+      filled.tasks = filled.tasks.filter((t: Task) => !t.isRevival && !t.isSpecial);
 
       // Expire catnip
       let override = filled.catStateOverride;
@@ -79,11 +97,15 @@ export function useGameState() {
         override = null;
       }
 
+      // Apply sound settings from saved state
+      setSFXEnabled(filled.sfxEnabled ?? true);
+      // BGM applied in CatScreen effect based on prop
+
       // Daily reset
       let tasks = filled.tasks;
       if (filled.lastResetDate !== todayString()) {
-        const completedYesterday = tasks.filter(t => !t.isRevival && t.completed).length;
-        const total = tasks.filter(t => !t.isRevival).length;
+        const completedYesterday = tasks.filter(t => t.completed).length;
+        const total = tasks.length;
         const ratio = total === 0 ? 1 : completedYesterday / total;
 
         let healthDelta = 0;
@@ -96,9 +118,12 @@ export function useGameState() {
         const newHealth = clamp(filled.catHealth + healthDelta, 0, 100);
         const alive = newHealth > 0;
 
-        tasks = filled.tasks
-          .filter(t => !t.isRevival)
-          .map(t => ({ ...t, completed: false, completedAt: undefined, latePenaltyApplied: false }));
+        tasks = filled.tasks.map(t => ({
+          ...t,
+          completed: false,
+          completedAt: undefined,
+          latePenaltyApplied: false,
+        }));
 
         setState({
           ...filled,
@@ -131,6 +156,93 @@ export function useGameState() {
       if (granted) scheduleNightlyReminder();
     });
   }, [loaded]);
+
+  // ── Hunger drain + health recovery ───────────────────────────────────────────
+  // -3 hunger/hr = -0.05/min; check every 60s
+  // At 0 hunger: -0.2 HP/min = -12 HP/hr
+  // At hunger >60: +0.1 HP/min = +6 HP/hr (slow recovery)
+  useEffect(() => {
+    function tick() {
+      setState(prev => {
+        if (!prev.catAlive) return prev;
+
+        const newHunger = clamp((prev.catHunger ?? 80) - 0.05, 0, 100);
+
+        let healthDelta = 0;
+        if (newHunger <= 0) {
+          healthDelta = -0.2; // starving: losing HP
+        } else if (newHunger >= 60) {
+          healthDelta = 0.1;  // well-fed: slowly recovering
+        }
+
+        const newHealth = clamp(prev.catHealth + healthDelta, 0, 100);
+        const alive = newHealth > 0;
+
+        if (newHunger === prev.catHunger && healthDelta === 0) return prev;
+
+        return { ...prev, catHunger: newHunger, catHealth: newHealth, catAlive: alive };
+      });
+    }
+
+    if (loaded) tick();
+    const id = setInterval(tick, 60_000); // every minute
+    return () => clearInterval(id);
+  }, [loaded]);
+
+  // ── Missed-task health drain ──────────────────────────────────────────────────
+  useEffect(() => {
+    function checkMissedTasks() {
+      const now = new Date();
+      const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+      setState(prev => {
+        if (!prev.catAlive) return prev;
+
+        let healthDelta = 0;
+        let missCount = 0;
+        const tasks = prev.tasks.map(t => {
+          if (t.completed || t.isRevival || !t.scheduledTime || t.latePenaltyApplied) return t;
+          const [h, m] = t.scheduledTime.split(':').map(Number);
+          if (isNaN(h) || isNaN(m)) return t;
+          if (currentMinutes >= h * 60 + m + 10) {
+            healthDelta -= 5;
+            missCount++;
+            return { ...t, latePenaltyApplied: true };
+          }
+          return t;
+        });
+
+        if (healthDelta === 0) return prev;
+
+        sendNotification(
+          '😿 Your cat is suffering!',
+          `${missCount} overdue task${missCount > 1 ? 's are' : ' is'} hurting ${prev.catName}. Do it now!`,
+          'missed-task'
+        );
+
+        const newHealth = clamp(prev.catHealth + healthDelta, 0, 100);
+        return { ...prev, tasks, catHealth: newHealth, catAlive: newHealth > 0 };
+      });
+    }
+
+    if (loaded) checkMissedTasks();
+    const id = setInterval(checkMissedTasks, 60_000);
+    return () => clearInterval(id);
+  }, [loaded]);
+
+  // ── Catnip expiry ─────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!state.catnipExpiresAt || !state.catStateOverride) return;
+    const ms = new Date(state.catnipExpiresAt).getTime() - Date.now();
+    if (ms <= 0) {
+      setState(prev => ({ ...prev, catStateOverride: null, catnipExpiresAt: null }));
+      return;
+    }
+    const t = setTimeout(() => {
+      setState(prev => ({ ...prev, catStateOverride: null, catnipExpiresAt: null }));
+    }, ms);
+    return () => clearTimeout(t);
+  }, [state.catnipExpiresAt]);
 
   // ── Actions ───────────────────────────────────────────────────────────────────
   const completeSetup = useCallback((catName: string, tasks: Task[]) => {
@@ -167,21 +279,7 @@ export function useGameState() {
       );
       const task = tasks.find(t => t.id === id)!;
 
-      // Revival task completion
-      if (task.isRevival) {
-        const revivalDone = tasks.filter(t => t.isRevival && t.completed).length;
-        const revivalTotal = tasks.filter(t => t.isRevival).length;
-        if (revivalDone >= revivalTotal) {
-          return {
-            ...prev,
-            tasks: tasks.filter(t => !t.isRevival).map(t => ({ ...t, completed: false })),
-            catHealth: 55,
-          };
-        }
-        return { ...prev, tasks };
-      }
-
-      // Regular / special — coins only, health only changes via market
+      // Coins only — health changes via hunger/market
       const delta = task.completed ? task.reward : -task.reward;
       return { ...prev, tasks, coins: clamp(prev.coins + delta, 0, 9999) };
     });
@@ -191,23 +289,10 @@ export function useGameState() {
     setState(prev => ({ ...prev, tasks: prev.tasks.filter(t => t.id !== id) }));
   }, []);
 
-  const startRevival = useCallback(() => {
-    const pool = [...REVIVAL_TASK_POOL].sort(() => Math.random() - 0.5).slice(0, 5);
-    const revivalTasks: Task[] = pool.map((title, i) => ({
-      id: `revival_${Date.now()}_${i}`,
-      title,
-      category: 'Revival',
-      scheduledTime: '',
-      reward: 0,
-      completed: false,
-      isRecurring: false,
-      isSpecial: false,
-      isRevival: true,
-      createdAt: new Date().toISOString(),
-    }));
+  const disputePriority = useCallback((id: string, priority: TaskPriority) => {
     setState(prev => ({
       ...prev,
-      tasks: [...prev.tasks.filter(t => !t.isRevival), ...revivalTasks],
+      tasks: prev.tasks.map(t => t.id === id ? { ...t, priority } : t),
     }));
   }, []);
 
@@ -241,43 +326,34 @@ export function useGameState() {
       };
 
       switch (item.effect) {
-        // Food items go to the queue — cat must be fed manually on the cat screen
-        case 'health_small': {
-          const qf: QueuedFood = { id: `food_${Date.now()}`, itemId: 'snack',    name: 'Cat Snack',    emoji: '🐟', health: 10 };
+        case 'hunger_small': {
+          const qf: QueuedFood = { id: `food_${Date.now()}`, itemId: 'snack', name: 'Cat Snack', emoji: '🐟', hunger: 30, health: 0 };
           patch.foodQueue = [...(prev.foodQueue ?? []), qf];
           result = '🐟 Cat Snack added to plate!';
           return { ...prev, ...patch };
         }
-        case 'health_medium': {
-          const qf: QueuedFood = { id: `food_${Date.now()}`, itemId: 'meal',     name: 'Premium Meal', emoji: '🍣', health: 25 };
+        case 'hunger_medium': {
+          const qf: QueuedFood = { id: `food_${Date.now()}`, itemId: 'meal', name: 'Premium Meal', emoji: '🍣', hunger: 60, health: 0 };
           patch.foodQueue = [...(prev.foodQueue ?? []), qf];
           result = '🍣 Premium Meal added to plate!';
           return { ...prev, ...patch };
         }
-        case 'health_large': {
-          const qf: QueuedFood = { id: `food_${Date.now()}`, itemId: 'medicine', name: 'Cat Medicine', emoji: '💊', health: 40 };
+        case 'health_direct': {
+          const qf: QueuedFood = { id: `food_${Date.now()}`, itemId: 'medicine', name: 'Cat Medicine', emoji: '💊', hunger: 0, health: 50 };
           patch.foodQueue = [...(prev.foodQueue ?? []), qf];
           result = '💊 Medicine added to plate!';
           return { ...prev, ...patch };
         }
         case 'revive':
-          if (!prev.catAlive || prev.catHealth < 10) {
+          if (!prev.catAlive || prev.catHealth <= 10) {
             patch.catHealth = 50;
             patch.catAlive  = true;
+            patch.catHunger = 50;
             patch.tasks     = prev.tasks.filter(t => !t.isRevival);
           } else {
             result = 'Your cat is still alive!';
             return prev;
           }
-          break;
-        case 'new_cat':
-          patch.catHealth      = 65;
-          patch.catAlive       = true;
-          patch.catXP          = 0;
-          patch.tasks          = prev.tasks.filter(t => !t.isRevival);
-          patch.catStateOverride = null;
-          patch.catColor       = randomCatColor();
-          patch.catPersonality = randomPersonality();
           break;
         case 'catnip': {
           const expires = new Date(Date.now() + 2 * 60 * 1000).toISOString();
@@ -294,92 +370,61 @@ export function useGameState() {
     return result;
   }, []);
 
-  // ── Missed-task health drain ──────────────────────────────────────────────────
-  useEffect(() => {
-    function checkMissedTasks() {
-      const now = new Date();
-      const currentMinutes = now.getHours() * 60 + now.getMinutes();
-
-      setState(prev => {
-        if (!prev.catAlive) return prev;
-
-        let healthDelta = 0;
-        let missCount = 0;
-        const tasks = prev.tasks.map(t => {
-          if (t.completed || t.isRevival || !t.scheduledTime || t.latePenaltyApplied) return t;
-          const [h, m] = t.scheduledTime.split(':').map(Number);
-          if (isNaN(h) || isNaN(m)) return t;
-          if (currentMinutes >= h * 60 + m + 10) {
-            healthDelta -= 5;
-            missCount++;
-            return { ...t, latePenaltyApplied: true };
-          }
-          return t;
-        });
-
-        if (healthDelta === 0) return prev;
-
-        // Fire a guilt notification
-        sendNotification(
-          '😿 Your cat is suffering!',
-          `${missCount} overdue task${missCount > 1 ? 's are' : ' is'} hurting ${prev.catName}. Do it now!`,
-          'missed-task'
-        );
-
-        const newHealth = clamp(prev.catHealth + healthDelta, 0, 100);
-        return { ...prev, tasks, catHealth: newHealth, catAlive: newHealth > 0 };
-      });
-    }
-
-    if (loaded) checkMissedTasks();
-    const id = setInterval(checkMissedTasks, 60_000);
-    return () => clearInterval(id);
-  }, [loaded]);
-
-  // ── Catnip expiry ─────────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!state.catnipExpiresAt || !state.catStateOverride) return;
-    const ms = new Date(state.catnipExpiresAt).getTime() - Date.now();
-    if (ms <= 0) {
-      setState(prev => ({ ...prev, catStateOverride: null, catnipExpiresAt: null }));
-      return;
-    }
-    const t = setTimeout(() => {
-      setState(prev => ({ ...prev, catStateOverride: null, catnipExpiresAt: null }));
-    }, ms);
-    return () => clearTimeout(t);
-  }, [state.catnipExpiresAt]);
-
   // ── Feed cat (drag-to-feed) ───────────────────────────────────────────────────
   const feedCat = useCallback((foodId: string) => {
     setState(prev => {
       const food = (prev.foodQueue ?? []).find(f => f.id === foodId);
       if (!food) return prev;
-      const newHealth = clamp(prev.catHealth + food.health, 0, 100);
+
+      let newHunger = prev.catHunger;
+      let newHealth = prev.catHealth;
+
+      if (food.hunger > 0) {
+        newHunger = clamp(prev.catHunger + food.hunger, 0, 100);
+      }
+      if (food.health > 0) {
+        newHealth = clamp(prev.catHealth + food.health, 0, 100);
+      }
+
       return {
         ...prev,
+        catHunger: newHunger,
         catHealth: newHealth,
         foodQueue: prev.foodQueue.filter(f => f.id !== foodId),
       };
     });
   }, []);
 
+  // ── Audio toggles ─────────────────────────────────────────────────────────────
+  const toggleSFX = useCallback(() => {
+    setState(prev => {
+      const next = !prev.sfxEnabled;
+      setSFXEnabled(next);
+      return { ...prev, sfxEnabled: next };
+    });
+  }, []);
+
+  const toggleBGM = useCallback(() => {
+    setState(prev => {
+      const next = !prev.bgmEnabled;
+      setBGMEnabled(next);
+      return { ...prev, bgmEnabled: next };
+    });
+  }, []);
+
   // ── Derived ───────────────────────────────────────────────────────────────────
   const regularTasks   = state.tasks.filter(t => !t.isRevival && !t.isSpecial);
-  const specialTasks   = state.tasks.filter(t => t.isSpecial && !t.isRevival);
-  const revivalTasks   = state.tasks.filter(t => t.isRevival);
-  const completedToday = state.tasks.filter(t => !t.isRevival && t.completed).length;
-  const totalTasks     = state.tasks.filter(t => !t.isRevival).length;
+  const completedToday = state.tasks.filter(t => t.completed).length;
+  const totalTasks     = state.tasks.length;
   const catState       = getCatState(state.catHealth, state.catAlive, state.catStateOverride);
-  const hasRevivalTasks = revivalTasks.length > 0;
-  const revivalProgress = revivalTasks.filter(t => t.completed).length;
-  const catLevel        = getCatLevel(state.catXP);
+  const catLevel       = getCatLevel(state.catXP);
 
   return {
     loaded,
     state,
     catState,
     catHealth: state.catHealth,
+    catHunger: state.catHunger ?? 80,
     coins: state.coins,
     catAlive: state.catAlive,
     catName: state.catName,
@@ -388,11 +433,9 @@ export function useGameState() {
     catLevel,
     catPersonality: state.catPersonality,
     setupComplete: state.setupComplete,
+    sfxEnabled: state.sfxEnabled ?? true,
+    bgmEnabled: state.bgmEnabled ?? true,
     regularTasks,
-    specialTasks,
-    revivalTasks,
-    hasRevivalTasks,
-    revivalProgress,
     completedToday,
     totalTasks,
     foodQueue: state.foodQueue ?? [],
@@ -400,9 +443,11 @@ export function useGameState() {
     addTask,
     toggleTask,
     deleteTask,
-    startRevival,
+    disputePriority,
     buyItem,
     applyRandomEvent,
     feedCat,
+    toggleSFX,
+    toggleBGM,
   };
 }
