@@ -6,6 +6,8 @@ export type CatState =
   | 'hospital'
   | 'deathbed';
 
+export type TaskPriority = 'high' | 'medium' | 'low';
+
 export interface Task {
   id: string;
   title: string;
@@ -19,6 +21,7 @@ export interface Task {
   isSpecial: boolean;
   isRevival: boolean;
   createdAt: string;
+  priority?: TaskPriority;    // default 'medium'
 }
 
 export interface MarketItem {
@@ -31,6 +34,14 @@ export interface MarketItem {
   xpReward: number;
 }
 
+export interface QueuedFood {
+  id: string;
+  itemId: string;   // 'snack' | 'meal' | 'medicine'
+  name: string;
+  emoji: string;
+  health: number;
+}
+
 export interface GameState {
   setupComplete: boolean;
   catName: string;
@@ -41,7 +52,8 @@ export interface GameState {
   catnipExpiresAt: string | null;
   tasks: Task[];
   lastResetDate: string;      // YYYY-MM-DD
-  catColor: string;           // theme key: 'classic' | 'midnight' | 'skyblue' etc.
-  catXP: number;              // cumulative XP
-  catPersonality: string;     // 'playful' | 'lazy' | 'grumpy' | 'sweet' | 'curious' | 'sassy'
+  catColor: string;
+  catXP: number;
+  catPersonality: string;
+  foodQueue: QueuedFood[];    // food waiting to be fed to cat
 }

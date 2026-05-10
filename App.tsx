@@ -7,6 +7,7 @@ import CatScreen, { RandomEventDisplay } from './src/screens/CatScreen';
 import TaskScreen from './src/screens/TaskScreen';
 import MarketScreen from './src/screens/MarketScreen';
 import OnboardingScreen from './src/screens/OnboardingScreen';
+import HauntedOverlay from './src/components/HauntedOverlay';
 import { useGameState, MARKET_ITEMS } from './src/hooks/useGameState';
 import { rollRandomEvent } from './src/utils/randomEvents';
 import { sendNotification } from './src/utils/notifications';
@@ -18,17 +19,14 @@ type Tab = 'cat' | 'tasks' | 'market';
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('cat');
   const [pendingEvent, setPendingEvent] = useState<RandomEventDisplay | null>(null);
-  const hasRolledRef = useRef(false);   // one roll per app session
+  const hasRolledRef = useRef(false);
   const game = useGameState();
 
-  // ── Random event: roll once per session when the Cat tab is visible ──────────
+  // ── Random event ──────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!game.loaded || hasRolledRef.current) return;
-    if (activeTab !== 'cat') return;
-
+    if (!game.loaded || hasRolledRef.current || activeTab !== 'cat') return;
     hasRolledRef.current = true;
 
-    // Slight delay so the cat screen renders first
     const t = setTimeout(() => {
       const event = rollRandomEvent({
         coins:       game.coins,
@@ -38,23 +36,12 @@ export default function App() {
         catName:     game.catName,
         personality: game.catPersonality,
       });
-
       if (!event) return;
-
-      // Apply health / coin deltas to game state
       game.applyRandomEvent(event.healthDelta, event.coinDelta);
-
-      // Push a device notification for harmful events
-      if (event.type === 'dog_attack') {
-        sendNotification('🐕 Dog Attack!', event.message, 'dog-attack');
-      }
-
+      if (event.type === 'dog_attack') sendNotification('🐕 Dog Attack!', event.message, 'dog-attack');
       setPendingEvent({
-        type:    event.type,
-        emoji:   event.emoji,
-        title:   event.title,
-        message: event.message,
-        color:   event.bannerColor,
+        type: event.type, emoji: event.emoji,
+        title: event.title, message: event.message, color: event.bannerColor,
       });
     }, 1200);
 
@@ -81,7 +68,6 @@ export default function App() {
     );
   }
 
-  // ── Add task helper ───────────────────────────────────────────────────────────
   function handleAddTask(title: string, time: string, isSpecial: boolean, coins: number) {
     game.addTask({
       title,
@@ -97,12 +83,8 @@ export default function App() {
   const needsAttention =
     !game.catAlive || game.catState === 'hospital' || game.catState === 'deathbed';
 
-  function switchTab(tab: Tab) {
-    playClick();
-    setActiveTab(tab);
-  }
+  function switchTab(tab: Tab) { playClick(); setActiveTab(tab); }
 
-  // ── Main UI ───────────────────────────────────────────────────────────────────
   return (
     <SafeAreaProvider>
       <StatusBar style="light" backgroundColor={GB.darkest} />
@@ -125,10 +107,12 @@ export default function App() {
               catLevel={game.catLevel}
               catPersonality={game.catPersonality}
               pendingEvent={pendingEvent}
+              foodQueue={game.foodQueue}
               onStartRevival={game.startRevival}
               onGoToTasks={() => switchTab('tasks')}
               onGoToMarket={() => switchTab('market')}
               onEventDismissed={() => setPendingEvent(null)}
+              onFeedCat={game.feedCat}
             />
           )}
 
@@ -158,44 +142,23 @@ export default function App() {
           )}
         </View>
 
+        {/* ── Haunted Mode Overlay (when cat is dead) ── */}
+        {!game.catAlive && <HauntedOverlay />}
+
         {/* Tab bar */}
         <SafeAreaView edges={['bottom']} style={styles.tabBar}>
-          <TabButton
-            label="CAT"
-            icon="=^.^="
-            active={activeTab === 'cat'}
-            onPress={() => switchTab('cat')}
-            alert={needsAttention}
-          />
-          <TabButton
-            label="TASKS"
-            icon="[///]"
-            active={activeTab === 'tasks'}
-            onPress={() => switchTab('tasks')}
-          />
-          <TabButton
-            label="MARKET"
-            icon="[🛒]"
-            active={activeTab === 'market'}
-            onPress={() => switchTab('market')}
-            alert={!game.catAlive}
-          />
+          <TabButton label="CAT"    icon="=^.^=" active={activeTab === 'cat'}    onPress={() => switchTab('cat')}    alert={needsAttention} />
+          <TabButton label="TASKS"  icon="[///]" active={activeTab === 'tasks'}  onPress={() => switchTab('tasks')} />
+          <TabButton label="MARKET" icon="[🛒]"  active={activeTab === 'market'} onPress={() => switchTab('market')} alert={!game.catAlive} />
         </SafeAreaView>
       </View>
     </SafeAreaProvider>
   );
 }
 
-// ─── Tab Button ───────────────────────────────────────────────────────────────
-
 interface TabButtonProps {
-  label: string;
-  icon: string;
-  active: boolean;
-  onPress: () => void;
-  alert?: boolean;
+  label: string; icon: string; active: boolean; onPress: () => void; alert?: boolean;
 }
-
 function TabButton({ label, icon, active, onPress, alert }: TabButtonProps) {
   return (
     <TouchableOpacity style={[styles.tab, active && styles.tabActive]} onPress={onPress}>
@@ -206,31 +169,16 @@ function TabButton({ label, icon, active, onPress, alert }: TabButtonProps) {
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
-
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: GB.darkest },
-  loading: {
-    flex: 1, backgroundColor: GB.darkest,
-    alignItems: 'center', justifyContent: 'center', gap: 12,
-  },
+  loading: { flex: 1, backgroundColor: GB.darkest, alignItems: 'center', justifyContent: 'center', gap: 12 },
   loadingText: { fontFamily: 'monospace', color: GB.light, fontSize: 14 },
-
-  tabBar: {
-    flexDirection: 'row', backgroundColor: '#0a200a',
-    borderTopWidth: 2, borderTopColor: GB.dark,
-  },
-  tab: {
-    flex: 1, alignItems: 'center', justifyContent: 'center',
-    paddingVertical: 10, gap: 2, position: 'relative',
-  },
+  tabBar: { flexDirection: 'row', backgroundColor: '#0a200a', borderTopWidth: 2, borderTopColor: GB.dark },
+  tab: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 10, gap: 2, position: 'relative' },
   tabActive: { backgroundColor: GB.darkest },
   tabIcon: { fontFamily: 'monospace', fontSize: 14, color: GB.dark },
   tabIconActive: { color: GB.light },
   tabLabel: { fontFamily: 'monospace', fontSize: 10, color: GB.dark, letterSpacing: 1 },
   tabLabelActive: { color: GB.medium },
-  alertDot: {
-    position: 'absolute', top: 8, right: '22%',
-    width: 8, height: 8, borderRadius: 4, backgroundColor: '#CC4444',
-  },
+  alertDot: { position: 'absolute', top: 8, right: '22%', width: 8, height: 8, borderRadius: 4, backgroundColor: '#CC4444' },
 });

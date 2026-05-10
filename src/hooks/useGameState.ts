@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Task, GameState, CatState, MarketItem } from '../types';
+import { Task, GameState, CatState, MarketItem, QueuedFood } from '../types';
 import { REVIVAL_TASK_POOL } from '../constants/sprites';
 import {
   randomCatColor, randomPersonality, getCatLevel,
@@ -51,6 +51,7 @@ const DEFAULT: GameState = {
   catColor: 'classic',
   catXP: 0,
   catPersonality: 'playful',
+  foodQueue: [],
 };
 
 export function useGameState() {
@@ -68,6 +69,7 @@ export function useGameState() {
         catColor: 'classic',
         catXP: 0,
         catPersonality: 'playful',
+        foodQueue: [],
         ...saved,
       };
 
@@ -239,9 +241,25 @@ export function useGameState() {
       };
 
       switch (item.effect) {
-        case 'health_small':  patch.catHealth = clamp(prev.catHealth + 10, 0, 100); break;
-        case 'health_medium': patch.catHealth = clamp(prev.catHealth + 25, 0, 100); break;
-        case 'health_large':  patch.catHealth = clamp(prev.catHealth + 40, 0, 100); break;
+        // Food items go to the queue — cat must be fed manually on the cat screen
+        case 'health_small': {
+          const qf: QueuedFood = { id: `food_${Date.now()}`, itemId: 'snack',    name: 'Cat Snack',    emoji: '🐟', health: 10 };
+          patch.foodQueue = [...(prev.foodQueue ?? []), qf];
+          result = '🐟 Cat Snack added to plate!';
+          return { ...prev, ...patch };
+        }
+        case 'health_medium': {
+          const qf: QueuedFood = { id: `food_${Date.now()}`, itemId: 'meal',     name: 'Premium Meal', emoji: '🍣', health: 25 };
+          patch.foodQueue = [...(prev.foodQueue ?? []), qf];
+          result = '🍣 Premium Meal added to plate!';
+          return { ...prev, ...patch };
+        }
+        case 'health_large': {
+          const qf: QueuedFood = { id: `food_${Date.now()}`, itemId: 'medicine', name: 'Cat Medicine', emoji: '💊', health: 40 };
+          patch.foodQueue = [...(prev.foodQueue ?? []), qf];
+          result = '💊 Medicine added to plate!';
+          return { ...prev, ...patch };
+        }
         case 'revive':
           if (!prev.catAlive || prev.catHealth < 10) {
             patch.catHealth = 50;
@@ -332,6 +350,20 @@ export function useGameState() {
     return () => clearTimeout(t);
   }, [state.catnipExpiresAt]);
 
+  // ── Feed cat (drag-to-feed) ───────────────────────────────────────────────────
+  const feedCat = useCallback((foodId: string) => {
+    setState(prev => {
+      const food = (prev.foodQueue ?? []).find(f => f.id === foodId);
+      if (!food) return prev;
+      const newHealth = clamp(prev.catHealth + food.health, 0, 100);
+      return {
+        ...prev,
+        catHealth: newHealth,
+        foodQueue: prev.foodQueue.filter(f => f.id !== foodId),
+      };
+    });
+  }, []);
+
   // ── Derived ───────────────────────────────────────────────────────────────────
   const regularTasks   = state.tasks.filter(t => !t.isRevival && !t.isSpecial);
   const specialTasks   = state.tasks.filter(t => t.isSpecial && !t.isRevival);
@@ -363,6 +395,7 @@ export function useGameState() {
     revivalProgress,
     completedToday,
     totalTasks,
+    foodQueue: state.foodQueue ?? [],
     completeSetup,
     addTask,
     toggleTask,
@@ -370,5 +403,6 @@ export function useGameState() {
     startRevival,
     buyItem,
     applyRandomEvent,
+    feedCat,
   };
 }
