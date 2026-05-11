@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
   ScrollView, StyleSheet, KeyboardAvoidingView, Platform,
-  Animated, PanResponder, LayoutAnimation, UIManager, Modal, Alert,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Task, TaskPriority, RepeatRule } from '../types';
@@ -11,11 +11,6 @@ import { predictPriority, getCoinsForPriority, priorityLabel } from '../utils/di
 import { playClick } from '../utils/sound';
 import { PixelCoin, PixelPriority } from '../components/PixelIcons';
 import ScheduleModal, { ScheduleConfig } from '../components/ScheduleModal';
-
-// Enable LayoutAnimation on Android
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -108,107 +103,46 @@ function DisputeModal({ task, onDisputePriority, onClose }: DisputeModalProps) {
   );
 }
 
-// ─── Swipeable Task Card ──────────────────────────────────────────────────────
+// ─── Task Card ───────────────────────────────────────────────────────────────
 
 interface CardProps {
   task: Task;
   onToggle: (id: string) => void;
-  onDelete: (id: string) => void;
-  onDeleteAndUpcoming: (id: string) => void;
   onDispute: (task: Task) => void;
   onEdit: (task: Task) => void;
   disabled?: boolean;
 }
 
-function SwipeableTaskCard({ task, onToggle, onDelete, onDeleteAndUpcoming, onDispute, onEdit, disabled }: CardProps) {
-  const translateX = useRef(new Animated.Value(0)).current;
-  const rotate     = useRef(new Animated.Value(0)).current;
-  const opacity    = useRef(new Animated.Value(1)).current;
-  const scale      = useRef(new Animated.Value(1)).current;
-
+function TaskCard({ task, onToggle, onDispute, onEdit, disabled }: CardProps) {
   const priority = (task.priority ?? 'medium') as TaskPriority;
-  const pc = PRIORITY[priority];
-  const missed = !!task.latePenaltyApplied && !task.completed;
+  const pc       = PRIORITY[priority];
+  const missed   = !!task.latePenaltyApplied && !task.completed;
   const isRepeat = !!task.templateId;
 
-  const panResponder = useMemo(() => PanResponder.create({
-    // Don't intercept the initial touch — let TouchableOpacity handle taps
-    onStartShouldSetPanResponder: () => false,
-    onMoveShouldSetPanResponder:  (_, g) => !disabled && !task.completed && Math.abs(g.dx) > 8,
-    onPanResponderMove: (_, g) => {
-      if (g.dx > 0) translateX.setValue(g.dx);
-    },
-    onPanResponderRelease: (_, g) => {
-      if (g.dx > 90) {
-        playClick();
-        Animated.parallel([
-          Animated.timing(translateX, { toValue: 600, duration: 280, useNativeDriver: true }),
-          Animated.timing(rotate,     { toValue: 1,   duration: 280, useNativeDriver: true }),
-          Animated.timing(opacity,    { toValue: 0,   duration: 220, useNativeDriver: true }),
-          Animated.timing(scale,      { toValue: 0.8, duration: 280, useNativeDriver: true }),
-        ]).start(() => {
-          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-          onToggle(task.id);
-          translateX.setValue(0); rotate.setValue(0);
-          opacity.setValue(1);    scale.setValue(1);
-        });
-      } else {
-        Animated.spring(translateX, { toValue: 0, useNativeDriver: true, tension: 200, friction: 10 }).start();
-      }
-    },
-  }), [task.id, task.completed, disabled]);
-
-  const rotateInterp = rotate.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '18deg'] });
-
-  function handleDeletePress() {
-    if (isRepeat) {
-      Alert.alert(
-        'Delete Repeating Task?',
-        `"${task.title}"`,
-        [
-          { text: 'Only This Task',      onPress: () => onDelete(task.id),            style: 'default' },
-          { text: 'This & All Upcoming', onPress: () => onDeleteAndUpcoming(task.id), style: 'destructive' },
-          { text: 'Cancel',                                                            style: 'cancel' },
-        ]
-      );
-    } else {
-      onDelete(task.id);
-    }
-  }
-
-  if (task.completed) {
-    return (
-      <View style={[styles.card, styles.cardDone, { borderLeftColor: pc.border }]}>
-        <Text style={styles.cardDoneText}>✓  {task.title}</Text>
-        {task.reward > 0 && (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-            <Text style={styles.cardDoneReward}>+{task.reward}</Text>
-            <PixelCoin size={2} />
-          </View>
-        )}
-      </View>
-    );
-  }
-
   return (
-    <Animated.View
-      style={{ transform: [{ translateX }, { rotate: rotateInterp }, { scale }], opacity }}
-      {...panResponder.panHandlers}
-    >
-      <View style={[styles.card, { backgroundColor: pc.bg, borderLeftColor: pc.border }, missed && styles.cardMissed]}>
-
-        {/* Priority badge */}
+    <View style={[
+      styles.card,
+      { backgroundColor: pc.bg, borderLeftColor: pc.border },
+      task.completed && styles.cardDone,
+      missed && !task.completed && styles.cardMissed,
+    ]}>
+      {/* Priority badge */}
+      {!task.completed && (
         <View style={[styles.priorityTag, { borderColor: pc.border }]}>
           <Text style={[styles.priorityTagText, { color: pc.border }]}>{pc.label}</Text>
         </View>
+      )}
 
-        {/* Tappable body — opens edit */}
-        <TouchableOpacity
-          style={styles.cardBody}
-          onPress={() => { if (!disabled) onEdit(task); }}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.cardTitle} numberOfLines={2}>{task.title}</Text>
+      {/* Tappable body — opens edit modal */}
+      <TouchableOpacity
+        style={styles.cardBody}
+        onPress={() => { if (!disabled || task.completed) onEdit(task); }}
+        activeOpacity={0.7}
+      >
+        <Text style={[styles.cardTitle, task.completed && styles.cardTitleDone]} numberOfLines={2}>
+          {task.title}
+        </Text>
+        {!task.completed && (
           <View style={styles.cardMeta}>
             {task.scheduledTime ? <Text style={styles.cardTime}>⏰ {task.scheduledTime}</Text> : null}
             {isRepeat && task.repeatRule && (task.repeatRule as string) !== 'none' && (
@@ -220,20 +154,32 @@ function SwipeableTaskCard({ task, onToggle, onDelete, onDeleteAndUpcoming, onDi
               <PixelCoin size={2} />
             </View>
           </View>
-        </TouchableOpacity>
+        )}
+      </TouchableOpacity>
 
-        {/* Actions */}
-        <View style={styles.cardActions}>
-          <TouchableOpacity onPress={() => { playClick(); onDispute(task); }} style={styles.disputeBtn}>
+      {/* Right-side actions */}
+      <View style={styles.cardActions}>
+        {!task.completed && (
+          <TouchableOpacity
+            onPress={() => { playClick(); onDispute(task); }}
+            style={styles.disputeBtn}
+          >
             <Text style={styles.disputeTxt}>⚡</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={handleDeletePress} style={styles.deleteBtn}>
-            <Text style={styles.deleteTxt}>✕</Text>
-          </TouchableOpacity>
-        </View>
+        )}
+
+        {/* Tick button — always visible */}
+        <TouchableOpacity
+          style={[styles.tickBtn, task.completed && styles.tickBtnDone]}
+          onPress={() => { if (!disabled || task.completed) { playClick(); onToggle(task.id); } }}
+          disabled={disabled && !task.completed}
+        >
+          <Text style={[styles.tickTxt, task.completed && styles.tickTxtDone]}>
+            {task.completed ? '✓' : '○'}
+          </Text>
+        </TouchableOpacity>
       </View>
-      <Text style={styles.swipeHint}>← swipe right to complete →</Text>
-    </Animated.View>
+    </View>
   );
 }
 
@@ -250,6 +196,7 @@ interface Props {
   onAdd: (title: string, config: ScheduleConfig) => void;
   onEdit: (id: string, config: ScheduleConfig, scope: 'this' | 'upcoming') => void;
 }
+
 
 export default function TaskScreen({
   regularTasks, catHealth, catAlive,
@@ -322,6 +269,17 @@ export default function TaskScreen({
     setEditingTask(null);
   }
 
+  function handleDeleteFromModal(scope: 'this' | 'upcoming') {
+    if (!editingTask) return;
+    if (scope === 'upcoming') {
+      onDeleteAndUpcoming(editingTask.id);
+    } else {
+      onDelete(editingTask.id);
+    }
+    setShowModal(false);
+    setEditingTask(null);
+  }
+
   // ── Edit task ───────────────────────────────────────────────────────────────
 
   function openEditModal(task: Task) {
@@ -360,6 +318,7 @@ export default function TaskScreen({
         isRepeating={!!editingTask?.templateId}
         onConfirm={handleModalConfirm}
         onCancel={() => { setShowModal(false); setEditingTask(null); }}
+        onDelete={modalMode === 'edit' ? handleDeleteFromModal : undefined}
       />
 
       {/* ── Dispute Modal ── */}
@@ -451,11 +410,9 @@ export default function TaskScreen({
                 <View key={t.id} style={styles.timedRow}>
                   <Text style={styles.timeMarker}>{t.scheduledTime}</Text>
                   <View style={{ flex: 1 }}>
-                    <SwipeableTaskCard
+                    <TaskCard
                       task={t}
                       onToggle={onToggle}
-                      onDelete={onDelete}
-                      onDeleteAndUpcoming={onDeleteAndUpcoming}
                       onDispute={setDisputingTask}
                       onEdit={openEditModal}
                       disabled={!catAlive || !isToday}
@@ -473,12 +430,10 @@ export default function TaskScreen({
                 <Text style={styles.sectionLabel}>FLEXIBLE</Text>
               </View>
               {flexible.map(t => (
-                <SwipeableTaskCard
+                <TaskCard
                   key={t.id}
                   task={t}
                   onToggle={onToggle}
-                  onDelete={onDelete}
-                  onDeleteAndUpcoming={onDeleteAndUpcoming}
                   onDispute={setDisputingTask}
                   onEdit={openEditModal}
                   disabled={!catAlive || !isToday}
@@ -592,30 +547,36 @@ const styles = StyleSheet.create({
   timedRow: { flexDirection: 'row', alignItems: 'flex-start', paddingLeft: 8 },
   timeMarker: { fontFamily: 'monospace', fontSize: 10, color: GB.dark, width: 42, paddingTop: 14, paddingRight: 4, textAlign: 'right' },
 
-  card: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 8, marginVertical: 4, borderRadius: 5, borderLeftWidth: 4, paddingVertical: 10, paddingRight: 8, paddingLeft: 10, gap: 8, backgroundColor: '#0a1a0a', borderLeftColor: GB.dark },
+  card: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 8, marginVertical: 4, borderRadius: 5, borderLeftWidth: 4, paddingVertical: 10, paddingRight: 6, paddingLeft: 10, gap: 8, backgroundColor: '#0a1a0a', borderLeftColor: GB.dark },
   cardMissed: { borderTopWidth: 1, borderTopColor: '#CC4444' },
-  cardDone: { opacity: 0.4, backgroundColor: '#0a0a0a' },
-  cardDoneText: { flex: 1, fontFamily: 'monospace', fontSize: 12, color: GB.dark, textDecorationLine: 'line-through' },
-  cardDoneReward: { fontFamily: 'monospace', fontSize: 10, color: GB.dark },
+  cardDone: { opacity: 0.45, backgroundColor: '#070f07' },
 
   priorityTag: { borderWidth: 1, borderRadius: 3, paddingHorizontal: 5, paddingVertical: 2 },
   priorityTagText: { fontFamily: 'monospace', fontSize: 9, fontWeight: 'bold', letterSpacing: 0.5 },
 
   cardBody: { flex: 1, gap: 4 },
   cardTitle: { fontFamily: 'monospace', fontSize: 13, color: GB.light, letterSpacing: 0.2 },
+  cardTitleDone: { color: GB.dark, textDecorationLine: 'line-through' },
   cardMeta: { flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' },
   cardTime: { fontFamily: 'monospace', fontSize: 10, color: GB.dark },
   repeatBadge: { fontFamily: 'monospace', fontSize: 9, color: GB.medium },
   missedBadge: { fontFamily: 'monospace', fontSize: 10, color: '#CC4444', fontWeight: 'bold' },
   cardReward: { fontFamily: 'monospace', fontSize: 10, color: GB.medium, fontWeight: 'bold' },
 
-  cardActions: { alignItems: 'center', justifyContent: 'center', gap: 6 },
+  cardActions: { alignItems: 'center', justifyContent: 'center', gap: 8 },
   disputeBtn: { padding: 4 },
   disputeTxt: { fontSize: 12 },
-  deleteBtn: { padding: 4 },
-  deleteTxt: { fontFamily: 'monospace', fontSize: 13, color: GB.dark },
 
-  swipeHint: { fontFamily: 'monospace', fontSize: 9, color: '#1a3a1a', textAlign: 'center', marginBottom: 2 },
+  // Tick button
+  tickBtn: {
+    width: 34, height: 34, borderRadius: 17,
+    borderWidth: 2, borderColor: GB.dark,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#0a1a0a',
+  },
+  tickBtnDone: { backgroundColor: GB.dark, borderColor: GB.medium },
+  tickTxt: { fontFamily: 'monospace', fontSize: 16, color: GB.dark, lineHeight: 20 },
+  tickTxtDone: { color: '#E8FFD0', fontWeight: 'bold' },
 
   empty: { fontFamily: 'monospace', fontSize: 12, color: GB.dark, textAlign: 'center', marginTop: 32 },
   noticeBanner: { margin: 12, padding: 8, borderWidth: 1, borderRadius: 4 },

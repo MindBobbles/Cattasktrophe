@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  Animated, ScrollView, PanResponder, Dimensions,
+  Animated, ScrollView, Alert, Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import CatSprite from '../components/CatSprite';
@@ -117,58 +117,41 @@ function formatDate(d: Date): string {
   return `${days[d.getDay()]} ${d.getDate()} ${months[d.getMonth()]}`;
 }
 
-// ─── Draggable Food Item ──────────────────────────────────────────────────────
+// ─── Tappable Food Item ───────────────────────────────────────────────────────
 
-function DraggableFoodItem({ food, onFeed }: { food: QueuedFood; onFeed: (id: string) => void }) {
-  const pan   = useRef(new Animated.ValueXY()).current;
-  const scale = useRef(new Animated.Value(1)).current;
-
-  const panResponder = useRef(PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onPanResponderGrant: () => {
-      Animated.spring(scale, { toValue: 1.2, useNativeDriver: true }).start();
-    },
-    onPanResponderMove: Animated.event(
-      [null, { dx: pan.x, dy: pan.y }],
-      { useNativeDriver: false }
-    ),
-    onPanResponderRelease: (_, gesture) => {
-      Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start();
-      if (gesture.dy < -120) {
-        playEarnCoin();
-        Animated.parallel([
-          Animated.timing(pan.y,  { toValue: -320, duration: 250, useNativeDriver: false }),
-          Animated.timing(scale,  { toValue: 0,    duration: 250, useNativeDriver: true }),
-        ]).start(() => {
-          onFeed(food.id);
-          pan.setValue({ x: 0, y: 0 });
-          scale.setValue(1);
-        });
-      } else {
-        Animated.spring(pan, { toValue: { x: 0, y: 0 }, useNativeDriver: false }).start();
-      }
-    },
-  })).current;
+function TappableFoodItem({
+  food, catName, onFeed,
+}: { food: QueuedFood; catName: string; onFeed: (id: string) => void }) {
+  function handlePress() {
+    Alert.alert(
+      `Feed ${catName}?`,
+      `${food.name} · +${food.hunger > 0 ? food.hunger + ' hunger' : food.health + ' HP'}`,
+      [
+        {
+          text: 'Feed! 🍽️',
+          onPress: () => { playEarnCoin(); onFeed(food.id); },
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  }
 
   return (
-    <Animated.View
-      style={[foodStyles.plate, { transform: [{ translateX: pan.x }, { translateY: pan.y }, { scale }] }]}
-      {...panResponder.panHandlers}
-    >
+    <TouchableOpacity style={foodStyles.plate} onPress={handlePress} activeOpacity={0.75}>
       <View style={foodStyles.plateCircle}>
-        <PixelItemIcon id={food.id} size={3} />
+        <PixelItemIcon id={food.itemId} size={3} />
       </View>
       <Text style={foodStyles.foodName} numberOfLines={1}>{food.name}</Text>
       <View style={foodStyles.foodStatRow}>
         <Text style={foodStyles.foodStat}>+{food.hunger > 0 ? food.hunger : food.health}</Text>
         {food.hunger > 0 ? <PixelBowl size={2} /> : <PixelHeart size={2} />}
       </View>
-    </Animated.View>
+    </TouchableOpacity>
   );
 }
 
 const foodStyles = StyleSheet.create({
-  plate: { alignItems: 'center', gap: 2, width: 72, zIndex: 10 },
+  plate: { alignItems: 'center', gap: 2, width: 72 },
   plateCircle: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#1a3a1a', borderWidth: 3, borderColor: GB.dark, alignItems: 'center', justifyContent: 'center' },
   foodName: { fontFamily: 'monospace', fontSize: 9, color: GB.dark, textAlign: 'center', width: 70 },
   foodStatRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
@@ -447,7 +430,7 @@ export default function CatScreen({
         {/* ── Food plate carousel ── */}
         {foodQueue.length > 0 && (
           <View style={styles.plateSection}>
-            <Text style={styles.plateSectionTitle}>DRAG FOOD TO FEED CAT ↑</Text>
+            <Text style={styles.plateSectionTitle}>TAP FOOD TO FEED {catName.toUpperCase()}</Text>
             <View style={styles.plateRow}>
               <TouchableOpacity
                 style={styles.plateArrow}
@@ -458,7 +441,12 @@ export default function CatScreen({
               </TouchableOpacity>
               <View style={styles.plateItems}>
                 {visibleFood.map(food => (
-                  <DraggableFoodItem key={food.id} food={food} onFeed={onFeedCat} />
+                  <TappableFoodItem
+                    key={food.id}
+                    food={food}
+                    catName={catName}
+                    onFeed={onFeedCat}
+                  />
                 ))}
               </View>
               <TouchableOpacity

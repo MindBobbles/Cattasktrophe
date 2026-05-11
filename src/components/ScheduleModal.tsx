@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
-  StyleSheet, Modal, KeyboardAvoidingView, Platform,
+  StyleSheet, Modal, KeyboardAvoidingView, Platform, Alert,
 } from 'react-native';
 import { RepeatRule } from '../types';
 import { GB } from '../constants/colors';
@@ -124,11 +124,12 @@ interface Props {
   isRepeating?: boolean;     // show scope selector in edit mode
   onConfirm: (config: ScheduleConfig, scope: 'this' | 'upcoming') => void;
   onCancel: () => void;
+  onDelete?: (scope: 'this' | 'upcoming') => void;  // edit mode only
 }
 
 export default function ScheduleModal({
   visible, initial, mode = 'add', isRepeating = false,
-  onConfirm, onCancel,
+  onConfirm, onCancel, onDelete,
 }: Props) {
   const today = new Date();
 
@@ -173,6 +174,29 @@ export default function ScheduleModal({
         ? prev.filter(d => d !== dow)
         : [...prev, dow].sort((a, b) => a - b)
     );
+  }
+
+  function handleDelete() {
+    if (isRepeating) {
+      Alert.alert(
+        'Delete Repeating Task?',
+        'What would you like to remove?',
+        [
+          { text: 'Only This Task',      onPress: () => { onDelete?.('this');     onCancel(); } },
+          { text: 'This & All Upcoming', onPress: () => { onDelete?.('upcoming'); onCancel(); }, style: 'destructive' },
+          { text: 'Cancel', style: 'cancel' },
+        ]
+      );
+    } else {
+      Alert.alert(
+        'Delete Task?',
+        'This cannot be undone.',
+        [
+          { text: 'Delete', onPress: () => { onDelete?.('this'); onCancel(); }, style: 'destructive' },
+          { text: 'Cancel', style: 'cancel' },
+        ]
+      );
+    }
   }
 
   function confirm() {
@@ -322,6 +346,13 @@ export default function ScheduleModal({
               </>
             )}
 
+            {/* ── DELETE (edit mode only) ── */}
+            {mode === 'edit' && onDelete && (
+              <TouchableOpacity style={styles.deleteTaskBtn} onPress={handleDelete}>
+                <Text style={styles.deleteTaskBtnTxt}>🗑  DELETE TASK</Text>
+              </TouchableOpacity>
+            )}
+
             {/* ── SCOPE (edit mode + repeating) ── */}
             {mode === 'edit' && isRepeating && (
               <>
@@ -386,7 +417,7 @@ const dStyles = StyleSheet.create({
   } as any,
   drumItem: { height: ITEM_H, alignItems: 'center', justifyContent: 'center' },
   drumText:     { fontFamily: 'monospace', fontSize: 22, color: '#1a3a1a', letterSpacing: 2 },
-  drumTextSel:  { fontSize: 34, fontWeight: 'bold', color: '#E8FFD0', letterSpacing: 3 },
+  drumTextSel:  { fontSize: 34, fontWeight: 'bold', color: '#FFFFFF', letterSpacing: 3 },
   drumTextNear: { fontSize: 24, color: '#5a9a5a' },
   drumTextFar:  { fontSize: 18, color: '#2a4a2a' },
 });
@@ -487,6 +518,16 @@ const styles = StyleSheet.create({
   dayToggleSel: { backgroundColor: GB.dark, borderColor: GB.medium },
   dayToggleTxt: { fontFamily: 'monospace', fontSize: 12, color: GB.dark },
   dayToggleTxtSel: { color: '#E8FFD0', fontWeight: 'bold' },
+
+  // Delete task button
+  deleteTaskBtn: {
+    paddingVertical: 12, borderWidth: 1, borderColor: '#CC3333',
+    borderRadius: 8, alignItems: 'center', backgroundColor: '#1a0505',
+    marginTop: 4,
+  },
+  deleteTaskBtnTxt: {
+    fontFamily: 'monospace', fontSize: 12, color: '#FF5555', letterSpacing: 1, fontWeight: 'bold',
+  },
 
   // Actions
   actions: {
