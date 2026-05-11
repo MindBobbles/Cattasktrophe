@@ -257,13 +257,16 @@ export function useGameState() {
   }, []);
 
   const addTask = useCallback((task: Omit<Task, 'id' | 'completed' | 'createdAt'>) => {
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
     setState(prev => ({
       ...prev,
       tasks: [...prev.tasks, {
         ...task,
         id: Date.now().toString(),
         completed: false,
-        createdAt: new Date().toISOString(),
+        createdAt: now.toISOString(),
+        taskDate: task.taskDate ?? today,   // preserve passed date or default to today
       }],
     }));
   }, []);

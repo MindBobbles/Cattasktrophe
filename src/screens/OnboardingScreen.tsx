@@ -45,6 +45,8 @@ export default function OnboardingScreen({ onComplete }: Props) {
   }
 
   function handleFinish() {
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
     const tasks: Task[] = ROUTINE_PRESETS
       .filter(p => selected.has(p.id))
       .map(p => ({
@@ -58,7 +60,8 @@ export default function OnboardingScreen({ onComplete }: Props) {
         isRecurring: true,
         isSpecial: false,
         isRevival: false,
-        createdAt: new Date().toISOString(),
+        createdAt: now.toISOString(),
+        taskDate: today,
       }));
     onComplete(catName.trim(), tasks);
   }

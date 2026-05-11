@@ -343,20 +343,24 @@ function SwipeableTaskCard({ task, onToggle, onDelete, onDispute, disabled }: Ca
 
 // ─── Main Screen ─────────────────────────────────────────────────────────────
 
+// ── Date helpers ─────────────────────────────────────────────────────────────
+function toDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
 interface Props {
   regularTasks: Task[];
-  completedToday: number;
   catHealth: number;
   catAlive: boolean;
   onToggle: (id: string) => void;
   onDelete: (id: string) => void;
   onDisputePriority: (id: string, priority: TaskPriority) => void;
-  onAdd: (title: string, time: string, priority: TaskPriority, coins: number) => void;
+  onAdd: (title: string, time: string, priority: TaskPriority, coins: number, taskDate: string) => void;
 }
 
 export default function TaskScreen({
   regularTasks,
-  completedToday, catHealth, catAlive,
+  catHealth, catAlive,
   onToggle, onDelete, onDisputePriority, onAdd,
 }: Props) {
 
@@ -374,20 +378,33 @@ export default function TaskScreen({
   const autoPriority  = useMemo(() => predictPriority(title), [title]);
   const autoCoins     = useMemo(() => getCoinsForPriority(autoPriority), [autoPriority]);
 
+  // ── Day scoping ──────────────────────────────────────────────────────────────
+  const isToday      = sameDay(selectedDate, today);
+  const isFuture     = selectedDate > today && !sameDay(selectedDate, today);
+  const selDateStr   = toDateStr(selectedDate);
+
+  // Tasks belonging to the selected day
+  // Old tasks without taskDate fall back to their createdAt date
+  const dayTasks = useMemo(() => regularTasks.filter(t => {
+    const tDate = t.taskDate ?? t.createdAt?.slice(0, 10) ?? toDateStr(today);
+    return tDate === selDateStr;
+  }), [regularTasks, selDateStr]);
+
   function handleAdd() {
     const t = title.trim();
-    if (!t) return;
-    onAdd(t, time.trim(), autoPriority, autoCoins);
+    if (!t || !isToday) return;   // can only add tasks for today
+    onAdd(t, time.trim(), autoPriority, autoCoins, selDateStr);
     setTitle('');
     setTime('');
   }
 
-  // Sort: timed first, then flexible
-  const timed    = regularTasks.filter(t => t.scheduledTime).sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime));
-  const flexible = regularTasks.filter(t => !t.scheduledTime);
+  // Sort: timed first, then flexible — from the day-filtered list
+  const timed    = dayTasks.filter(t => t.scheduledTime).sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime));
+  const flexible = dayTasks.filter(t => !t.scheduledTime);
 
-  const total = regularTasks.length;
-  const pct   = total === 0 ? 0 : Math.round((completedToday / total) * 100);
+  const total = dayTasks.length;
+  const done  = dayTasks.filter(t => t.completed).length;
+  const pct   = total === 0 ? 0 : Math.round((done / total) * 100);
 
   function prevWeek() { const d = new Date(weekAnchor); d.setDate(d.getDate() - 7); setWeekAnchor(d); }
   function nextWeek() { const d = new Date(weekAnchor); d.setDate(d.getDate() + 7); setWeekAnchor(d); }
@@ -421,7 +438,7 @@ export default function TaskScreen({
         <View style={styles.header}>
           <View style={styles.headerRow}>
             <Text style={styles.headerTitle}>DAILY TASKS</Text>
-            <Text style={styles.headerSub}>{completedToday}/{total} · {pct}%</Text>
+            <Text style={styles.headerSub}>{done}/{total} · {pct}%</Text>
           </View>
 
           {/* Month strip */}
@@ -472,6 +489,17 @@ export default function TaskScreen({
         {/* ── Task List ── */}
         <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled">
 
+          {/* Non-today notice */}
+          {!isToday && (
+            <View style={[styles.deadBanner, { borderColor: isFuture ? GB.dark : '#555' }]}>
+              <Text style={[styles.deadBannerText, { color: isFuture ? GB.medium : GB.dark }]}>
+                {isFuture
+                  ? `📅 Future day — tasks added here will unlock on ${selDateStr}`
+                  : `🔒 Past day — view only. Tasks can only be completed on their day.`}
+              </Text>
+            </View>
+          )}
+
           {/* Timed tasks */}
           {timed.length > 0 && (
             <View style={styles.section}>
@@ -483,7 +511,7 @@ export default function TaskScreen({
                   <Text style={styles.timeMarker}>{t.scheduledTime}</Text>
                   <View style={{ flex: 1 }}>
                     <SwipeableTaskCard task={t} onToggle={onToggle} onDelete={onDelete}
-                      onDispute={setDisputingTask} disabled={!catAlive} />
+                      onDispute={setDisputingTask} disabled={!catAlive || !isToday} />
                   </View>
                 </View>
               ))}
@@ -498,16 +526,22 @@ export default function TaskScreen({
               </View>
               {flexible.map(t => (
                 <SwipeableTaskCard key={t.id} task={t} onToggle={onToggle} onDelete={onDelete}
-                  onDispute={setDisputingTask} disabled={!catAlive} />
+                  onDispute={setDisputingTask} disabled={!catAlive || !isToday} />
               ))}
             </View>
           )}
 
-          {regularTasks.length === 0 && (
-            <Text style={styles.empty}>No tasks yet. Add one below ↓</Text>
+          {dayTasks.length === 0 && (
+            <Text style={styles.empty}>
+              {isToday
+                ? 'No tasks yet. Add one below ↓'
+                : isFuture
+                  ? 'No tasks planned for this day yet.'
+                  : 'No tasks were added on this day.'}
+            </Text>
           )}
 
-          {!catAlive && (
+          {!catAlive && isToday && (
             <View style={styles.deadBanner}>
               <Text style={styles.deadBannerText}>
                 💀 Your cat is dead. Go to Market → buy Revive Potion (50🪙).
@@ -517,18 +551,19 @@ export default function TaskScreen({
 
         </ScrollView>
 
-        {/* ── Add task form ── */}
-        <View style={styles.addBox}>
+        {/* ── Add task form (today only) ── */}
+        <View style={[styles.addBox, !isToday && { opacity: 0.35 }]}>
           <View style={styles.addRow}>
             <TextInput
               style={[styles.input, { flex: 1 }]}
               value={title}
               onChangeText={setTitle}
-              placeholder="New task..."
+              placeholder={isToday ? 'New task...' : 'Switch to today to add tasks'}
               placeholderTextColor={GB.dark}
               returnKeyType="done"
               onSubmitEditing={handleAdd}
               maxLength={80}
+              editable={isToday}
             />
             {/* iOS-style time picker button */}
             <TouchableOpacity
@@ -562,9 +597,9 @@ export default function TaskScreen({
           {/* Add button */}
           <View style={styles.addActions}>
             <TouchableOpacity
-              style={[styles.addBtn, !title.trim() && styles.addBtnDisabled]}
+              style={[styles.addBtn, (!title.trim() || !isToday) && styles.addBtnDisabled]}
               onPress={handleAdd}
-              disabled={!title.trim()}
+              disabled={!title.trim() || !isToday}
             >
               <Text style={styles.addBtnText}>+ ADD TASK</Text>
             </TouchableOpacity>

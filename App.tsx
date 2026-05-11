@@ -76,13 +76,14 @@ export default function App() {
     );
   }
 
-  function handleAddTask(title: string, time: string, priority: TaskPriority, coins: number) {
+  function handleAddTask(title: string, time: string, priority: TaskPriority, coins: number, taskDate: string) {
     game.addTask({
       title,
       category:      'Custom',
       scheduledTime: time,
       reward:        coins,
       priority,
+      taskDate,
       isRecurring:   false,
       isSpecial:     false,
       isRevival:     false,
@@ -130,7 +131,6 @@ export default function App() {
           {activeTab === 'tasks' && (
             <TaskScreen
               regularTasks={game.regularTasks}
-              completedToday={game.completedToday}
               catHealth={game.catHealth}
               catAlive={game.catAlive}
               onToggle={game.toggleTask}

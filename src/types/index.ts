@@ -21,6 +21,7 @@ export interface Task {
   isSpecial: boolean;
   isRevival: boolean;
   createdAt: string;
+  taskDate: string;           // YYYY-MM-DD — which day this task belongs to
   priority?: TaskPriority;    // auto-assigned; default 'medium'
 }
 
