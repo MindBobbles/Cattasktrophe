@@ -13,44 +13,63 @@ export const PRIORITY_COINS: Record<AutoPriority, number> = {
 
 // ── Phrases (checked first — higher specificity) ───────────────────────────
 const HIGH_PHRASES = [
-  'study for', 'prepare for', 'work on', 'finish report', 'submit',
+  // Study / Academic
+  'study for', 'prepare for', 'finish report', 'submit assignment',
   'thesis defense', 'board exam', 'job interview', 'practice presentation',
-  'write report', 'write essay', 'write paper', 'deep work', 'iron man',
-  'half marathon', 'strength training', 'weight training', 'interval training',
-  'bake cake', 'bake bread', 'bake cookies', 'code a', 'work on app',
-  'work on project',
+  'write report', 'write essay', 'write paper', 'deep work',
+  // Work deliverables
+  'finish office', 'office work', 'work on project', 'work on app',
+  'finish project', 'ship feature', 'code review', 'work on app',
+  // Creative / production
+  'record video', 'edit video', 'produce video', 'finish artwork',
+  'finish painting', 'finish drawing', 'record podcast', 'edit podcast',
+  'mix track', 'master track', 'finish track', 'finish song',
+  // Gym / demanding physical
+  'go to gym', 'hit the gym', 'weight training', 'strength training',
+  'interval training', 'half marathon', 'iron man',
+  // Big cooking
+  'bake cake', 'bake bread', 'bake cookies', 'cook biryani', 'cook lasagna',
 ];
 
 const MEDIUM_PHRASES = [
   'grocery shopping', 'food shopping', 'meal prep', 'team meeting',
   'clear inbox', 'go swimming', 'go cycling', 'go running', 'go boxing',
-  'go to gym', 'go for a run', 'go for a walk', 'reply to',
+  'go for a run', 'go for a walk', 'reply to',
 ];
 
 // ── Single keywords ────────────────────────────────────────────────────────
 const HIGH_KEYWORDS = [
-  'exam', 'interview', 'deadline', 'urgent', 'important', 'critical',
-  'presentation', 'assignment', 'project', 'thesis', 'dissertation',
-  'surgery', 'doctor', 'appointment', 'bill', 'payment', 'tax', 'report',
-  'emergency', 'bake', 'coding', 'programming', 'study', 'exercise',
-  'workout', 'gym', 'marathon', 'triathlon', 'biryani', 'lasagna', 'lasagne',
-  // Common physical activities
-  'run', 'running', 'training', 'practice', 'sprint', 'race', 'hike', 'hiking',
-  'lifting', 'crossfit', 'bootcamp',
-  // Academic / work deliverables
-  'homework', 'coursework', 'revision', 'due', 'submit', 'draft',
-  'implement', 'build', 'develop', 'debug', 'deploy',
+  // Urgent / critical
+  'exam', 'interview', 'deadline', 'urgent', 'critical', 'emergency',
+  // Presentations / submissions
+  'presentation', 'assignment', 'thesis', 'dissertation',
+  'submit', 'due', 'draft',
+  // Medical / legal / financial
+  'surgery', 'appointment', 'bill', 'payment', 'tax',
+  // Academic / work
+  'homework', 'coursework', 'revision', 'implement', 'develop', 'debug', 'deploy',
+  'coding', 'programming', 'study',
+  // Gym-specific (demanding physical session)
+  'gym', 'workout', 'lifting', 'crossfit', 'bootcamp', 'marathon', 'triathlon',
+  // Creative production
+  'artwork', 'painting', 'illustration', 'produce', 'record', 'filming',
+  'compose', 'portfolio',
+  // Office
+  'office', 'project', 'report',
 ];
 
 const MEDIUM_KEYWORDS = [
   'meeting', 'call', 'email', 'review', 'grocery', 'groceries', 'shopping',
-  'swimming', 'cycling', 'yoga', 'pilates', 'bjj', 'mma', 'jog',
-  'cooking', 'cook', 'laundry', 'cleaning', 'clean', 'read', 'meditate',
-  'journal', 'stretch', 'walk', 'tidy', 'dishes', 'reply',
-  // Organisational tasks
+  // Regular exercise (not gym sessions)
+  'run', 'running', 'sprint', 'jog', 'jogging', 'hike', 'hiking',
+  'cycling', 'swimming', 'yoga', 'pilates', 'bjj', 'mma', 'training',
+  'practice', 'exercise', 'stretch', 'walk',
+  // Cooking / home
+  'cooking', 'cook', 'bake', 'laundry', 'cleaning', 'clean', 'tidy', 'dishes',
+  // Admin / light tasks
+  'read', 'meditate', 'journal', 'reply',
   'organise', 'organize', 'plan', 'schedule', 'arrange', 'sort',
   'errand', 'errands', 'chore', 'chores',
-  // Light fixes / maintenance
   'fix', 'repair', 'water', 'charge', 'backup', 'update', 'install',
 ];
 

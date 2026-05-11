@@ -2,14 +2,15 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
   ScrollView, StyleSheet, KeyboardAvoidingView, Platform,
-  Animated, PanResponder, LayoutAnimation, UIManager, Modal,
+  Animated, PanResponder, LayoutAnimation, UIManager, Modal, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Task, TaskPriority } from '../types';
+import { Task, TaskPriority, RepeatRule } from '../types';
 import { GB } from '../constants/colors';
 import { predictPriority, getCoinsForPriority, priorityLabel } from '../utils/difficultyPredictor';
 import { playClick } from '../utils/sound';
 import { PixelCoin, PixelPriority } from '../components/PixelIcons';
+import ScheduleModal, { ScheduleConfig } from '../components/ScheduleModal';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -21,170 +22,39 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
 const DAYS   = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
 
-const PRIORITY: Record<TaskPriority, { border: string; bg: string; label: string; dot: string }> = {
-  high:   { border: '#CC2222', bg: '#1a0808', label: 'HIGH', dot: '🔴' },
-  medium: { border: '#B89000', bg: '#1a1500', label: 'MED',  dot: '🟡' },
-  low:    { border: '#2A6230', bg: '#0a1a0a', label: 'LOW',  dot: '🟢' },
+const PRIORITY: Record<TaskPriority, { border: string; bg: string; label: string }> = {
+  high:   { border: '#CC2222', bg: '#1a0808', label: 'HIGH' },
+  medium: { border: '#B89000', bg: '#1a1500', label: 'MED'  },
+  low:    { border: '#2A6230', bg: '#0a1a0a', label: 'LOW'  },
 };
 
-const ITEM_H    = 56; // time picker row height
-const VISIBLE   = 5;  // rows visible in the drum (odd number — 1 selected + 2 above/below)
+const REPEAT_LABEL: Partial<Record<RepeatRule | 'none', string>> = {
+  daily:    '∞ DAILY',
+  weekdays: 'M-F',
+  weekly:   '📅 WEEKLY',
+  custom:   '⚙ CUSTOM',
+};
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function getWeekDays(anchor: Date): Date[] {
-  const days: Date[] = [];
   const start = new Date(anchor);
   start.setDate(anchor.getDate() - anchor.getDay());
-  for (let i = 0; i < 7; i++) {
+  return Array.from({ length: 7 }, (_, i) => {
     const d = new Date(start);
     d.setDate(start.getDate() + i);
-    days.push(d);
-  }
-  return days;
+    return d;
+  });
 }
 
 function sameDay(a: Date, b: Date) {
   return a.getDate() === b.getDate() &&
-    a.getMonth() === b.getMonth() &&
+    a.getMonth()    === b.getMonth() &&
     a.getFullYear() === b.getFullYear();
 }
 
-// ─── Drum Picker ──────────────────────────────────────────────────────────────
-
-const DRUM_H = ITEM_H * VISIBLE; // total height of the visible drum window
-
-function DrumPicker({
-  values, selected, onChange,
-}: { values: number[]; selected: number; onChange: (v: number) => void }) {
-  const scrollRef = useRef<ScrollView>(null);
-  const PAD = Math.floor(VISIBLE / 2); // phantom rows above/below for edge scroll
-
-  useEffect(() => {
-    const idx = values.indexOf(selected);
-    if (idx >= 0) {
-      const timer = setTimeout(() => {
-        scrollRef.current?.scrollTo({ y: idx * ITEM_H, animated: false });
-      }, 60);
-      return () => clearTimeout(timer);
-    }
-  }, [selected]);
-
-  return (
-    <View style={pickerStyles.drumWrap}>
-      {/* Selection highlight bar in the centre */}
-      <View style={pickerStyles.selBar} pointerEvents="none" />
-      {/* Top fade */}
-      <View style={pickerStyles.fadeTop} pointerEvents="none" />
-      {/* Bottom fade */}
-      <View style={pickerStyles.fadeBot} pointerEvents="none" />
-
-      <ScrollView
-        ref={scrollRef}
-        style={{ height: DRUM_H }}
-        showsVerticalScrollIndicator={false}
-        snapToInterval={ITEM_H}
-        decelerationRate="fast"
-        scrollEventThrottle={16}
-        contentContainerStyle={{ paddingVertical: ITEM_H * PAD }}
-        onMomentumScrollEnd={e => {
-          const idx = Math.round(e.nativeEvent.contentOffset.y / ITEM_H);
-          const clamped = Math.max(0, Math.min(values.length - 1, idx));
-          onChange(values[clamped]);
-        }}
-      >
-        {values.map((v, i) => {
-          const dist = Math.abs(values.indexOf(selected) - i);
-          const isSel = v === selected;
-          return (
-            <TouchableOpacity
-              key={i}
-              style={pickerStyles.drumItem}
-              onPress={() => {
-                onChange(v);
-                scrollRef.current?.scrollTo({ y: i * ITEM_H, animated: true });
-              }}
-              activeOpacity={0.7}
-            >
-              <Text style={[
-                pickerStyles.drumText,
-                isSel  && pickerStyles.drumTextSel,
-                dist === 1 && pickerStyles.drumTextNear,
-                dist >= 2  && pickerStyles.drumTextFar,
-              ]}>
-                {String(v).padStart(2, '0')}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
-    </View>
-  );
-}
-
-// ─── Time Picker Modal ────────────────────────────────────────────────────────
-
-const HOURS   = Array.from({ length: 24 }, (_, i) => i);
-const MINUTES = Array.from({ length: 60 }, (_, i) => i);
-
-interface TimePickerProps {
-  visible: boolean;
-  initialTime: string;
-  onConfirm: (hhmm: string) => void;
-  onCancel: () => void;
-  onClear: () => void;
-}
-
-function TimePickerModal({ visible, initialTime, onConfirm, onCancel, onClear }: TimePickerProps) {
-  const [hour, setHour]     = useState(9);
-  const [minute, setMinute] = useState(0);
-
-  useEffect(() => {
-    if (visible && initialTime) {
-      const [h, m] = initialTime.split(':').map(Number);
-      if (!isNaN(h)) setHour(h);
-      if (!isNaN(m)) setMinute(m);
-    } else if (visible) {
-      setHour(9); setMinute(0);
-    }
-  }, [visible]);
-
-  function confirm() {
-    onConfirm(`${String(hour).padStart(2,'0')}:${String(minute).padStart(2,'0')}`);
-  }
-
-  return (
-    <Modal visible={visible} transparent animationType="fade">
-      <View style={pickerStyles.overlay}>
-        <View style={pickerStyles.container}>
-          {/* Header */}
-          <Text style={pickerStyles.title}>⏰  SET TIME</Text>
-
-          {/* Drum columns */}
-          <View style={pickerStyles.drumRow}>
-            <DrumPicker values={HOURS}   selected={hour}   onChange={setHour}   />
-            <View style={pickerStyles.colonWrap}>
-              <Text style={pickerStyles.colon}>:</Text>
-            </View>
-            <DrumPicker values={MINUTES} selected={minute} onChange={setMinute} />
-          </View>
-
-          {/* Buttons */}
-          <View style={pickerStyles.actions}>
-            <TouchableOpacity style={pickerStyles.clearBtn} onPress={onClear}>
-              <Text style={pickerStyles.clearBtnText}>CLEAR</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={pickerStyles.cancelBtn} onPress={onCancel}>
-              <Text style={pickerStyles.cancelBtnText}>CANCEL</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={pickerStyles.confirmBtn} onPress={confirm}>
-              <Text style={pickerStyles.confirmBtnText}>SET ✓</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
+function toDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 // ─── Dispute Modal ────────────────────────────────────────────────────────────
@@ -204,9 +74,7 @@ function DisputeModal({ task, onDisputePriority, onClose }: DisputeModalProps) {
           <Text style={disputeStyles.title}>DISPUTE PRIORITY</Text>
           <Text style={disputeStyles.taskTitle} numberOfLines={2}>{task.title}</Text>
           <View style={disputeStyles.autoRow}>
-            <Text style={disputeStyles.auto}>
-              Auto: {(task.priority ?? 'medium').toUpperCase()} ·
-            </Text>
+            <Text style={disputeStyles.auto}>Auto: {(task.priority ?? 'medium').toUpperCase()} ·</Text>
             <Text style={disputeStyles.auto}> +{task.reward}</Text>
             <PixelCoin size={2} />
           </View>
@@ -240,17 +108,19 @@ function DisputeModal({ task, onDisputePriority, onClose }: DisputeModalProps) {
   );
 }
 
-// ─── Swipeable Task Card ─────────────────────────────────────────────────────
+// ─── Swipeable Task Card ──────────────────────────────────────────────────────
 
 interface CardProps {
   task: Task;
   onToggle: (id: string) => void;
   onDelete: (id: string) => void;
+  onDeleteAndUpcoming: (id: string) => void;
   onDispute: (task: Task) => void;
+  onEdit: (task: Task) => void;
   disabled?: boolean;
 }
 
-function SwipeableTaskCard({ task, onToggle, onDelete, onDispute, disabled }: CardProps) {
+function SwipeableTaskCard({ task, onToggle, onDelete, onDeleteAndUpcoming, onDispute, onEdit, disabled }: CardProps) {
   const translateX = useRef(new Animated.Value(0)).current;
   const rotate     = useRef(new Animated.Value(0)).current;
   const opacity    = useRef(new Animated.Value(1)).current;
@@ -259,10 +129,12 @@ function SwipeableTaskCard({ task, onToggle, onDelete, onDispute, disabled }: Ca
   const priority = (task.priority ?? 'medium') as TaskPriority;
   const pc = PRIORITY[priority];
   const missed = !!task.latePenaltyApplied && !task.completed;
+  const isRepeat = !!task.templateId;
 
   const panResponder = useMemo(() => PanResponder.create({
-    onStartShouldSetPanResponder: () => !disabled && !task.completed,
-    onMoveShouldSetPanResponder: (_, g) => !disabled && !task.completed && Math.abs(g.dx) > 8,
+    // Don't intercept the initial touch — let TouchableOpacity handle taps
+    onStartShouldSetPanResponder: () => false,
+    onMoveShouldSetPanResponder:  (_, g) => !disabled && !task.completed && Math.abs(g.dx) > 8,
     onPanResponderMove: (_, g) => {
       if (g.dx > 0) translateX.setValue(g.dx);
     },
@@ -288,6 +160,22 @@ function SwipeableTaskCard({ task, onToggle, onDelete, onDispute, disabled }: Ca
 
   const rotateInterp = rotate.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '18deg'] });
 
+  function handleDeletePress() {
+    if (isRepeat) {
+      Alert.alert(
+        'Delete Repeating Task?',
+        `"${task.title}"`,
+        [
+          { text: 'Only This Task',      onPress: () => onDelete(task.id),            style: 'default' },
+          { text: 'This & All Upcoming', onPress: () => onDeleteAndUpcoming(task.id), style: 'destructive' },
+          { text: 'Cancel',                                                            style: 'cancel' },
+        ]
+      );
+    } else {
+      onDelete(task.id);
+    }
+  }
+
   if (task.completed) {
     return (
       <View style={[styles.card, styles.cardDone, { borderLeftColor: pc.border }]}>
@@ -308,30 +196,38 @@ function SwipeableTaskCard({ task, onToggle, onDelete, onDispute, disabled }: Ca
       {...panResponder.panHandlers}
     >
       <View style={[styles.card, { backgroundColor: pc.bg, borderLeftColor: pc.border }, missed && styles.cardMissed]}>
+
         {/* Priority badge */}
         <View style={[styles.priorityTag, { borderColor: pc.border }]}>
           <Text style={[styles.priorityTagText, { color: pc.border }]}>{pc.label}</Text>
         </View>
 
-        {/* Task info */}
-        <View style={styles.cardBody}>
+        {/* Tappable body — opens edit */}
+        <TouchableOpacity
+          style={styles.cardBody}
+          onPress={() => { if (!disabled) onEdit(task); }}
+          activeOpacity={0.7}
+        >
           <Text style={styles.cardTitle} numberOfLines={2}>{task.title}</Text>
           <View style={styles.cardMeta}>
             {task.scheduledTime ? <Text style={styles.cardTime}>⏰ {task.scheduledTime}</Text> : null}
+            {isRepeat && task.repeatRule && (task.repeatRule as string) !== 'none' && (
+              <Text style={styles.repeatBadge}>🔁 {REPEAT_LABEL[task.repeatRule] ?? task.repeatRule}</Text>
+            )}
             {missed && <Text style={styles.missedBadge}>❌ -5HP</Text>}
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
               <Text style={styles.cardReward}>+{task.reward}</Text>
               <PixelCoin size={2} />
             </View>
           </View>
-        </View>
+        </TouchableOpacity>
 
         {/* Actions */}
         <View style={styles.cardActions}>
           <TouchableOpacity onPress={() => { playClick(); onDispute(task); }} style={styles.disputeBtn}>
             <Text style={styles.disputeTxt}>⚡</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => onDelete(task.id)} style={styles.deleteBtn}>
+          <TouchableOpacity onPress={handleDeletePress} style={styles.deleteBtn}>
             <Text style={styles.deleteTxt}>✕</Text>
           </TouchableOpacity>
         </View>
@@ -341,12 +237,7 @@ function SwipeableTaskCard({ task, onToggle, onDelete, onDispute, disabled }: Ca
   );
 }
 
-// ─── Main Screen ─────────────────────────────────────────────────────────────
-
-// ── Date helpers ─────────────────────────────────────────────────────────────
-function toDateStr(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-}
+// ─── Main Screen ──────────────────────────────────────────────────────────────
 
 interface Props {
   regularTasks: Task[];
@@ -354,51 +245,100 @@ interface Props {
   catAlive: boolean;
   onToggle: (id: string) => void;
   onDelete: (id: string) => void;
+  onDeleteAndUpcoming: (id: string) => void;
   onDisputePriority: (id: string, priority: TaskPriority) => void;
-  onAdd: (title: string, time: string, priority: TaskPriority, coins: number, taskDate: string) => void;
+  onAdd: (title: string, config: ScheduleConfig) => void;
+  onEdit: (id: string, config: ScheduleConfig, scope: 'this' | 'upcoming') => void;
 }
 
 export default function TaskScreen({
-  regularTasks,
-  catHealth, catAlive,
-  onToggle, onDelete, onDisputePriority, onAdd,
+  regularTasks, catHealth, catAlive,
+  onToggle, onDelete, onDeleteAndUpcoming, onDisputePriority,
+  onAdd, onEdit,
 }: Props) {
 
   const today = useMemo(() => new Date(), []);
   const [selectedDate, setSelectedDate] = useState(today);
-  const [weekAnchor, setWeekAnchor] = useState(today);
+  const [weekAnchor,   setWeekAnchor]   = useState(today);
   const weekDays = useMemo(() => getWeekDays(weekAnchor), [weekAnchor]);
 
   // Add-task form
-  const [title, setTitle]               = useState('');
-  const [time, setTime]                 = useState('');
-  const [showTimePicker, setShowTimePicker] = useState(false);
-  const [disputingTask, setDisputingTask]   = useState<Task | null>(null);
+  const [title, setTitle] = useState('');
 
-  const autoPriority  = useMemo(() => predictPriority(title), [title]);
-  const autoCoins     = useMemo(() => getCoinsForPriority(autoPriority), [autoPriority]);
+  // Schedule modal (used for both ADD and EDIT)
+  const [showModal,   setShowModal]   = useState(false);
+  const [modalMode,   setModalMode]   = useState<'add' | 'edit'>('add');
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [modalInitial, setModalInitial] = useState<ScheduleConfig>({
+    taskDate:      '',
+    scheduledTime: '',
+    repeatRule:    'none',
+    repeatDays:    [],
+  });
+
+  // Dispute modal
+  const [disputingTask, setDisputingTask] = useState<Task | null>(null);
+
+  const autoPriority = useMemo(() => predictPriority(title), [title]);
+  const autoCoins    = useMemo(() => getCoinsForPriority(autoPriority), [autoPriority]);
 
   // ── Day scoping ──────────────────────────────────────────────────────────────
-  const isToday      = sameDay(selectedDate, today);
-  const isFuture     = selectedDate > today && !sameDay(selectedDate, today);
-  const selDateStr   = toDateStr(selectedDate);
+  const isToday    = sameDay(selectedDate, today);
+  const isFuture   = selectedDate > today && !sameDay(selectedDate, today);
+  const selDateStr = toDateStr(selectedDate);
 
-  // Tasks belonging to the selected day
-  // Old tasks without taskDate fall back to their createdAt date
-  const dayTasks = useMemo(() => regularTasks.filter(t => {
-    const tDate = t.taskDate ?? t.createdAt?.slice(0, 10) ?? toDateStr(today);
-    return tDate === selDateStr;
-  }), [regularTasks, selDateStr]);
+  const dayTasks = useMemo(() =>
+    regularTasks.filter(t => {
+      const tDate = t.taskDate ?? t.createdAt?.slice(0, 10) ?? toDateStr(today);
+      return tDate === selDateStr;
+    }),
+    [regularTasks, selDateStr]
+  );
 
-  function handleAdd() {
+  // ── Add task ────────────────────────────────────────────────────────────────
+
+  function openAddModal() {
     const t = title.trim();
-    if (!t || !isToday) return;   // can only add tasks for today
-    onAdd(t, time.trim(), autoPriority, autoCoins, selDateStr);
-    setTitle('');
-    setTime('');
+    if (!t || !isToday) return;
+    setModalMode('add');
+    setEditingTask(null);
+    setModalInitial({
+      taskDate:      selDateStr,
+      scheduledTime: '',
+      repeatRule:    'none',
+      repeatDays:    [],
+    });
+    setShowModal(true);
   }
 
-  // Sort: timed first, then flexible — from the day-filtered list
+  function handleModalConfirm(config: ScheduleConfig, scope: 'this' | 'upcoming') {
+    if (modalMode === 'add') {
+      onAdd(title.trim(), config);
+      setTitle('');
+    } else if (modalMode === 'edit' && editingTask) {
+      onEdit(editingTask.id, config, scope);
+    }
+    setShowModal(false);
+    setEditingTask(null);
+  }
+
+  // ── Edit task ───────────────────────────────────────────────────────────────
+
+  function openEditModal(task: Task) {
+    playClick();
+    setEditingTask(task);
+    setModalMode('edit');
+    setModalInitial({
+      title:         task.title,
+      taskDate:      task.taskDate ?? selDateStr,
+      scheduledTime: task.scheduledTime ?? '',
+      repeatRule:    (task.repeatRule as RepeatRule | 'none') ?? 'none',
+      repeatDays:    task.repeatDays ?? [],
+    });
+    setShowModal(true);
+  }
+
+  // ── Task list sort ──────────────────────────────────────────────────────────
   const timed    = dayTasks.filter(t => t.scheduledTime).sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime));
   const flexible = dayTasks.filter(t => !t.scheduledTime);
 
@@ -412,13 +352,14 @@ export default function TaskScreen({
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
 
-      {/* ── Time Picker Modal ── */}
-      <TimePickerModal
-        visible={showTimePicker}
-        initialTime={time}
-        onConfirm={v => { setTime(v); setShowTimePicker(false); }}
-        onCancel={() => setShowTimePicker(false)}
-        onClear={() => { setTime(''); setShowTimePicker(false); }}
+      {/* ── Schedule Modal (add + edit) ── */}
+      <ScheduleModal
+        visible={showModal}
+        initial={modalInitial}
+        mode={modalMode}
+        isRepeating={!!editingTask?.templateId}
+        onConfirm={handleModalConfirm}
+        onCancel={() => { setShowModal(false); setEditingTask(null); }}
       />
 
       {/* ── Dispute Modal ── */}
@@ -462,8 +403,8 @@ export default function TaskScreen({
             </TouchableOpacity>
             <View style={styles.weekStrip}>
               {weekDays.map((d, i) => {
-                const isToday  = sameDay(d, today);
-                const isSelect = sameDay(d, selectedDate);
+                const isTodayCell = sameDay(d, today);
+                const isSelect    = sameDay(d, selectedDate);
                 return (
                   <TouchableOpacity key={i}
                     style={[styles.dayCell, isSelect && styles.dayCellSelected]}
@@ -472,10 +413,10 @@ export default function TaskScreen({
                     <Text style={[styles.dayLabel, isSelect && styles.dayLabelSelected]}>
                       {DAYS[d.getDay()].slice(0, 2)}
                     </Text>
-                    <Text style={[styles.dayNum, isSelect && styles.dayNumSelected, isToday && styles.dayNumToday]}>
+                    <Text style={[styles.dayNum, isSelect && styles.dayNumSelected, isTodayCell && styles.dayNumToday]}>
                       {d.getDate()}
                     </Text>
-                    {isToday && <View style={styles.todayDot} />}
+                    {isTodayCell && <View style={styles.todayDot} />}
                   </TouchableOpacity>
                 );
               })}
@@ -491,16 +432,16 @@ export default function TaskScreen({
 
           {/* Non-today notice */}
           {!isToday && (
-            <View style={[styles.deadBanner, { borderColor: isFuture ? GB.dark : '#555' }]}>
-              <Text style={[styles.deadBannerText, { color: isFuture ? GB.medium : GB.dark }]}>
+            <View style={[styles.noticeBanner, { borderColor: isFuture ? GB.dark : '#555' }]}>
+              <Text style={[styles.noticeBannerText, { color: isFuture ? GB.medium : GB.dark }]}>
                 {isFuture
-                  ? `📅 Future day — tasks added here will unlock on ${selDateStr}`
-                  : `🔒 Past day — view only. Tasks can only be completed on their day.`}
+                  ? `📅 Future — tasks added here unlock on ${selDateStr}`
+                  : '🔒 Past day — view only'}
               </Text>
             </View>
           )}
 
-          {/* Timed tasks */}
+          {/* Scheduled tasks */}
           {timed.length > 0 && (
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
@@ -510,8 +451,15 @@ export default function TaskScreen({
                 <View key={t.id} style={styles.timedRow}>
                   <Text style={styles.timeMarker}>{t.scheduledTime}</Text>
                   <View style={{ flex: 1 }}>
-                    <SwipeableTaskCard task={t} onToggle={onToggle} onDelete={onDelete}
-                      onDispute={setDisputingTask} disabled={!catAlive || !isToday} />
+                    <SwipeableTaskCard
+                      task={t}
+                      onToggle={onToggle}
+                      onDelete={onDelete}
+                      onDeleteAndUpcoming={onDeleteAndUpcoming}
+                      onDispute={setDisputingTask}
+                      onEdit={openEditModal}
+                      disabled={!catAlive || !isToday}
+                    />
                   </View>
                 </View>
               ))}
@@ -525,8 +473,16 @@ export default function TaskScreen({
                 <Text style={styles.sectionLabel}>FLEXIBLE</Text>
               </View>
               {flexible.map(t => (
-                <SwipeableTaskCard key={t.id} task={t} onToggle={onToggle} onDelete={onDelete}
-                  onDispute={setDisputingTask} disabled={!catAlive || !isToday} />
+                <SwipeableTaskCard
+                  key={t.id}
+                  task={t}
+                  onToggle={onToggle}
+                  onDelete={onDelete}
+                  onDeleteAndUpcoming={onDeleteAndUpcoming}
+                  onDispute={setDisputingTask}
+                  onEdit={openEditModal}
+                  disabled={!catAlive || !isToday}
+                />
               ))}
             </View>
           )}
@@ -553,32 +509,9 @@ export default function TaskScreen({
 
         {/* ── Add task form (today only) ── */}
         <View style={[styles.addBox, !isToday && { opacity: 0.35 }]}>
-          <View style={styles.addRow}>
-            <TextInput
-              style={[styles.input, { flex: 1 }]}
-              value={title}
-              onChangeText={setTitle}
-              placeholder={isToday ? 'New task...' : 'Switch to today to add tasks'}
-              placeholderTextColor={GB.dark}
-              returnKeyType="done"
-              onSubmitEditing={handleAdd}
-              maxLength={80}
-              editable={isToday}
-            />
-            {/* iOS-style time picker button */}
-            <TouchableOpacity
-              style={[styles.input, styles.timeBtn]}
-              onPress={() => { playClick(); setShowTimePicker(true); }}
-            >
-              <Text style={{ fontFamily: 'monospace', fontSize: 11, color: time ? GB.light : GB.dark, textAlign: 'center' }}>
-                {time || '⏰\nTIME'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Auto priority preview */}
+          {/* Priority preview */}
           {title.trim().length > 0 && (
-            <View style={[styles.diffRow, { borderLeftWidth: 3, borderLeftColor: PRIORITY[autoPriority].border }]}>
+            <View style={[styles.diffRow, { borderLeftColor: PRIORITY[autoPriority].border }]}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <PixelPriority level={autoPriority} size={3} />
                 <Text style={[styles.diffLabel, { color: PRIORITY[autoPriority].border }]}>
@@ -594,16 +527,27 @@ export default function TaskScreen({
             </View>
           )}
 
-          {/* Add button */}
-          <View style={styles.addActions}>
-            <TouchableOpacity
-              style={[styles.addBtn, (!title.trim() || !isToday) && styles.addBtnDisabled]}
-              onPress={handleAdd}
-              disabled={!title.trim() || !isToday}
-            >
-              <Text style={styles.addBtnText}>+ ADD TASK</Text>
-            </TouchableOpacity>
+          {/* Title input + ADD button */}
+          <View style={styles.addRow}>
+            <TextInput
+              style={[styles.input, { flex: 1 }]}
+              value={title}
+              onChangeText={setTitle}
+              placeholder={isToday ? 'New task name...' : 'Switch to today to add'}
+              placeholderTextColor={GB.dark}
+              returnKeyType="done"
+              onSubmitEditing={openAddModal}
+              maxLength={80}
+              editable={isToday}
+            />
           </View>
+          <TouchableOpacity
+            style={[styles.addBtn, (!title.trim() || !isToday) && styles.addBtnDisabled]}
+            onPress={openAddModal}
+            disabled={!title.trim() || !isToday}
+          >
+            <Text style={styles.addBtnText}>+ ADD TASK</Text>
+          </TouchableOpacity>
         </View>
 
       </KeyboardAvoidingView>
@@ -661,6 +605,7 @@ const styles = StyleSheet.create({
   cardTitle: { fontFamily: 'monospace', fontSize: 13, color: GB.light, letterSpacing: 0.2 },
   cardMeta: { flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' },
   cardTime: { fontFamily: 'monospace', fontSize: 10, color: GB.dark },
+  repeatBadge: { fontFamily: 'monospace', fontSize: 9, color: GB.medium },
   missedBadge: { fontFamily: 'monospace', fontSize: 10, color: '#CC4444', fontWeight: 'bold' },
   cardReward: { fontFamily: 'monospace', fontSize: 10, color: GB.medium, fontWeight: 'bold' },
 
@@ -673,109 +618,20 @@ const styles = StyleSheet.create({
   swipeHint: { fontFamily: 'monospace', fontSize: 9, color: '#1a3a1a', textAlign: 'center', marginBottom: 2 },
 
   empty: { fontFamily: 'monospace', fontSize: 12, color: GB.dark, textAlign: 'center', marginTop: 32 },
+  noticeBanner: { margin: 12, padding: 8, borderWidth: 1, borderRadius: 4 },
+  noticeBannerText: { fontFamily: 'monospace', fontSize: 11, textAlign: 'center' },
   deadBanner: { margin: 12, padding: 10, borderWidth: 1, borderColor: '#CC4444', borderRadius: 4, backgroundColor: '#1a0000' },
   deadBannerText: { fontFamily: 'monospace', fontSize: 11, color: '#FF6666', textAlign: 'center' },
 
   addBox: { borderTopWidth: 2, borderTopColor: GB.dark, backgroundColor: '#0a1a0a' },
   addRow: { flexDirection: 'row' },
-  input: { fontFamily: 'monospace', fontSize: 13, color: GB.light, paddingHorizontal: 12, paddingVertical: 11, borderRightWidth: 1, borderRightColor: GB.dark },
-  timeBtn: { width: 68, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
-  diffRow: { paddingHorizontal: 12, paddingVertical: 5, borderTopWidth: 1, borderTopColor: GB.dark, backgroundColor: '#061006', gap: 2 },
+  input: { fontFamily: 'monospace', fontSize: 13, color: GB.light, paddingHorizontal: 12, paddingVertical: 11 },
+  diffRow: { paddingHorizontal: 12, paddingVertical: 5, borderTopWidth: 1, borderTopColor: GB.dark, backgroundColor: '#061006', gap: 2, borderLeftWidth: 3 },
   diffLabel: { fontFamily: 'monospace', fontSize: 11, fontWeight: 'bold' },
   diffHint: { fontFamily: 'monospace', fontSize: 9, color: GB.dark },
-  addActions: { borderTopWidth: 1, borderTopColor: GB.dark },
-  addBtn: { alignItems: 'center', justifyContent: 'center', paddingVertical: 12, backgroundColor: GB.dark },
+  addBtn: { alignItems: 'center', justifyContent: 'center', paddingVertical: 12, backgroundColor: GB.dark, borderTopWidth: 1, borderTopColor: GB.dark },
   addBtnDisabled: { backgroundColor: '#1a2e0a', opacity: 0.5 },
   addBtnText: { fontFamily: 'monospace', fontSize: 13, fontWeight: 'bold', color: GB.light, letterSpacing: 2 },
-});
-
-// ─── Time Picker Styles ───────────────────────────────────────────────────────
-
-const pickerStyles = StyleSheet.create({
-  overlay: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.92)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  container: {
-    backgroundColor: '#050f05', borderWidth: 2, borderColor: GB.dark,
-    borderRadius: 16, paddingHorizontal: 24, paddingTop: 22, paddingBottom: 20,
-    alignItems: 'center', width: 300, gap: 20,
-  },
-  title: {
-    fontFamily: 'monospace', fontSize: 13, fontWeight: 'bold',
-    color: GB.dark, letterSpacing: 3, textTransform: 'uppercase',
-  },
-
-  // Drum columns row
-  drumRow: { flexDirection: 'row', alignItems: 'center', gap: 0 },
-  colonWrap: {
-    width: 32, height: DRUM_H,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  colon: {
-    fontFamily: 'monospace', fontSize: 36, fontWeight: 'bold',
-    color: GB.light, lineHeight: 44, marginTop: -8,
-  },
-
-  // Individual drum column
-  drumWrap: {
-    width: 96, height: DRUM_H,
-    overflow: 'hidden', position: 'relative',
-  },
-  // Green rounded selection bar in the exact centre
-  selBar: {
-    position: 'absolute',
-    top: ITEM_H * Math.floor(VISIBLE / 2),
-    left: 6, right: 6, height: ITEM_H,
-    backgroundColor: GB.dark,
-    borderRadius: 10, zIndex: 1,
-  } as any,
-  // Top fade — solid overlay, colour matches container bg
-  fadeTop: {
-    position: 'absolute', top: 0, left: 0, right: 0,
-    height: ITEM_H,           // covers the topmost row
-    backgroundColor: '#050f05',
-    opacity: 0.55, zIndex: 2,
-  } as any,
-  // Bottom fade
-  fadeBot: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
-    height: ITEM_H,           // covers the bottommost row
-    backgroundColor: '#050f05',
-    opacity: 0.55, zIndex: 2,
-  } as any,
-
-  drumItem: { height: ITEM_H, alignItems: 'center', justifyContent: 'center' },
-
-  // Text states — distance-based opacity/size
-  drumText: {
-    fontFamily: 'monospace', fontSize: 22,
-    color: '#1a3a1a', letterSpacing: 2,
-  },
-  drumTextSel: {
-    fontSize: 34, fontWeight: 'bold',
-    color: '#E8FFD0', letterSpacing: 3,   // bright near-white lime — high contrast on dark green box
-  },
-  drumTextNear: { fontSize: 24, color: '#5a9a5a' },
-  drumTextFar:  { fontSize: 18, color: '#2a4a2a' },
-
-  // Buttons
-  actions: { flexDirection: 'row', gap: 8, width: '100%' },
-  clearBtn: {
-    flex: 1, paddingVertical: 10, borderWidth: 1, borderColor: GB.dark,
-    borderRadius: 8, alignItems: 'center',
-  },
-  clearBtnText: { fontFamily: 'monospace', fontSize: 11, color: GB.dark, letterSpacing: 1 },
-  cancelBtn: {
-    flex: 1, paddingVertical: 10, borderWidth: 1, borderColor: GB.dark,
-    borderRadius: 8, alignItems: 'center',
-  },
-  cancelBtnText: { fontFamily: 'monospace', fontSize: 11, color: GB.medium, letterSpacing: 1 },
-  confirmBtn: {
-    flex: 1, paddingVertical: 10, backgroundColor: GB.dark,
-    borderRadius: 8, alignItems: 'center',
-  },
-  confirmBtnText: { fontFamily: 'monospace', fontSize: 11, fontWeight: 'bold', color: GB.lightest, letterSpacing: 1 },
 });
 
 // ─── Dispute Styles ───────────────────────────────────────────────────────────

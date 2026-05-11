@@ -13,7 +13,9 @@ import { rollRandomEvent } from './src/utils/randomEvents';
 import { sendNotification } from './src/utils/notifications';
 import { playClick, startBGM, stopBGM } from './src/utils/sound';
 import { GB } from './src/constants/colors';
-import { TaskPriority } from './src/types';
+import { RepeatRule } from './src/types';
+import { ScheduleConfig } from './src/components/ScheduleModal';
+import { predictPriority, getCoinsForPriority } from './src/utils/difficultyPredictor';
 
 type Tab = 'cat' | 'tasks' | 'market';
 
@@ -76,18 +78,40 @@ export default function App() {
     );
   }
 
-  function handleAddTask(title: string, time: string, priority: TaskPriority, coins: number, taskDate: string) {
+  function handleAddTask(title: string, config: ScheduleConfig) {
+    const priority = predictPriority(title);
+    const coins    = getCoinsForPriority(priority);
+    const isRepeat = config.repeatRule !== 'none';
+
     game.addTask({
       title,
       category:      'Custom',
-      scheduledTime: time,
+      scheduledTime: config.scheduledTime,
       reward:        coins,
       priority,
-      taskDate,
-      isRecurring:   false,
+      taskDate:      config.taskDate,
+      isRecurring:   isRepeat,
       isSpecial:     false,
       isRevival:     false,
+      isTemplate:    isRepeat,
+      repeatRule:    isRepeat ? (config.repeatRule as RepeatRule) : undefined,
+      repeatDays:    config.repeatDays,
     });
+  }
+
+  function handleEditTask(id: string, config: ScheduleConfig, scope: 'this' | 'upcoming') {
+    const changes = {
+      ...(config.title !== undefined ? { title: config.title } : {}),
+      scheduledTime: config.scheduledTime,
+      taskDate:      config.taskDate,
+      repeatRule:    config.repeatRule !== 'none' ? (config.repeatRule as RepeatRule) : undefined,
+      repeatDays:    config.repeatDays,
+    };
+    if (scope === 'upcoming') {
+      game.updateTaskAndUpcoming(id, changes);
+    } else {
+      game.updateTask(id, changes);
+    }
   }
 
   const needsAttention =
@@ -135,8 +159,10 @@ export default function App() {
               catAlive={game.catAlive}
               onToggle={game.toggleTask}
               onDelete={game.deleteTask}
+              onDeleteAndUpcoming={game.deleteTaskAndUpcoming}
               onDisputePriority={game.disputePriority}
               onAdd={handleAddTask}
+              onEdit={handleEditTask}
             />
           )}
 

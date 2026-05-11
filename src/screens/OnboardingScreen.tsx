@@ -6,6 +6,7 @@ import {
 import { Task } from '../types';
 import { ROUTINE_PRESETS, PresetTask } from '../constants/taskLibrary';
 import { GB } from '../constants/colors';
+import { predictPriority, getCoinsForPriority } from '../utils/difficultyPredictor';
 
 interface Props {
   onComplete: (catName: string, tasks: Task[]) => void;
@@ -49,20 +50,26 @@ export default function OnboardingScreen({ onComplete }: Props) {
     const today = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
     const tasks: Task[] = ROUTINE_PRESETS
       .filter(p => selected.has(p.id))
-      .map(p => ({
-        id: `routine_${p.id}`,
-        title: `${p.emoji} ${p.title}`,
-        category: p.category,
-        scheduledTime: times[p.id] ?? p.defaultTime,
-        reward: p.reward,
-        priority: 'medium' as const,
-        completed: false,
-        isRecurring: true,
-        isSpecial: false,
-        isRevival: false,
-        createdAt: now.toISOString(),
-        taskDate: today,
-      }));
+      .map(p => {
+        const prio = predictPriority(p.title);
+        return {
+          id:            `routine_${p.id}`,
+          title:         `${p.emoji} ${p.title}`,
+          category:      p.category,
+          scheduledTime: times[p.id] ?? p.defaultTime,
+          reward:        getCoinsForPriority(prio),
+          priority:      prio,
+          completed:     false,
+          isRecurring:   true,
+          isSpecial:     false,
+          isRevival:     false,
+          isTemplate:    true,          // templates — instances generated each day
+          repeatRule:    'daily' as const,
+          repeatDays:    [],
+          createdAt:     now.toISOString(),
+          taskDate:      today,
+        };
+      });
     onComplete(catName.trim(), tasks);
   }
 

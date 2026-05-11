@@ -7,6 +7,7 @@ export type CatState =
   | 'deathbed';
 
 export type TaskPriority = 'high' | 'medium' | 'low';
+export type RepeatRule = 'daily' | 'weekdays' | 'weekly' | 'custom';
 
 export interface Task {
   id: string;
@@ -20,9 +21,14 @@ export interface Task {
   isRecurring: boolean;
   isSpecial: boolean;
   isRevival: boolean;
+  isTemplate: boolean;        // true = master repeat template (not shown in daily list)
   createdAt: string;
-  taskDate: string;           // YYYY-MM-DD — which day this task belongs to
-  priority?: TaskPriority;    // auto-assigned; default 'medium'
+  taskDate: string;           // YYYY-MM-DD — which day this task belongs to (template = creation date)
+  priority?: TaskPriority;
+  // Repeat fields (templates only)
+  repeatRule?: RepeatRule;    // how it repeats
+  repeatDays?: number[];      // 0=Sun … 6=Sat  (for 'weekly' and 'custom')
+  templateId?: string;        // instance → links back to its template
 }
 
 export interface MarketItem {
