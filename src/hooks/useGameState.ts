@@ -422,14 +422,15 @@ export function useGameState() {
   const toggleTask = useCallback((id: string) => {
     setState(prev => {
       if (!prev.catAlive) return prev;
+      const task = prev.tasks.find(t => t.id === id);
+      // Guard: can't un-complete a task (prevents coin farming)
+      if (!task || task.completed) return prev;
       const tasks = prev.tasks.map(t =>
         t.id === id
-          ? { ...t, completed: !t.completed, completedAt: !t.completed ? new Date().toISOString() : undefined }
+          ? { ...t, completed: true, completedAt: new Date().toISOString() }
           : t
       );
-      const task  = tasks.find(t => t.id === id)!;
-      const delta = task.completed ? task.reward : -task.reward;
-      return { ...prev, tasks, coins: clamp(prev.coins + delta, 0, 9999) };
+      return { ...prev, tasks, coins: clamp(prev.coins + task.reward, 0, 9999) };
     });
   }, []);
 

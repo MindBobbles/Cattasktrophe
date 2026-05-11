@@ -168,11 +168,11 @@ function TaskCard({ task, onToggle, onDispute, onEdit, disabled }: CardProps) {
           </TouchableOpacity>
         )}
 
-        {/* Tick button — always visible */}
+        {/* Tick button — locked once completed */}
         <TouchableOpacity
           style={[styles.tickBtn, task.completed && styles.tickBtnDone]}
-          onPress={() => { if (!disabled || task.completed) { playClick(); onToggle(task.id); } }}
-          disabled={disabled && !task.completed}
+          onPress={() => { playClick(); onToggle(task.id); }}
+          disabled={disabled || task.completed}
         >
           <Text style={[styles.tickTxt, task.completed && styles.tickTxtDone]}>
             {task.completed ? '✓' : '○'}
