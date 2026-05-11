@@ -8,6 +8,7 @@ import {
   requestNotificationPermission, sendNotification, scheduleNightlyReminder,
 } from '../utils/notifications';
 import { setSFXEnabled } from '../utils/sound';
+import { getCoinsForPriority } from '../utils/difficultyPredictor';
 
 const STORAGE_KEY = '@cat_task_trophe_v3';
 
@@ -502,7 +503,11 @@ export function useGameState() {
   const disputePriority = useCallback((id: string, priority: TaskPriority) => {
     setState(prev => ({
       ...prev,
-      tasks: prev.tasks.map(t => t.id === id ? { ...t, priority } : t),
+      tasks: prev.tasks.map(t =>
+        t.id === id
+          ? { ...t, priority, reward: getCoinsForPriority(priority) }
+          : t
+      ),
     }));
   }, []);
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
-  StyleSheet, Modal, KeyboardAvoidingView, Platform, Alert,
+  StyleSheet, Modal, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { RepeatRule } from '../types';
 import { GB } from '../constants/colors';
@@ -142,7 +142,8 @@ export default function ScheduleModal({
   const [minute,     setMinute]     = useState(0);
   const [repeatRule, setRepeatRule] = useState<RepeatRule | 'none'>('none');
   const [repeatDays, setRepeatDays] = useState<number[]>([]);
-  const [scope,      setScope]      = useState<'this' | 'upcoming'>('this');
+  const [scope,           setScope]           = useState<'this' | 'upcoming'>('this');
+  const [deleteConfirm,   setDeleteConfirm]   = useState(false);
 
   useEffect(() => {
     if (visible) {
@@ -179,26 +180,13 @@ export default function ScheduleModal({
   }
 
   function handleDelete() {
-    if (isRepeating) {
-      Alert.alert(
-        'Delete Repeating Task?',
-        'What would you like to remove?',
-        [
-          { text: 'Only This Task',      onPress: () => { onDelete?.('this');     onCancel(); } },
-          { text: 'This & All Upcoming', onPress: () => { onDelete?.('upcoming'); onCancel(); }, style: 'destructive' },
-          { text: 'Cancel', style: 'cancel' },
-        ]
-      );
-    } else {
-      Alert.alert(
-        'Delete Task?',
-        'This cannot be undone.',
-        [
-          { text: 'Delete', onPress: () => { onDelete?.('this'); onCancel(); }, style: 'destructive' },
-          { text: 'Cancel', style: 'cancel' },
-        ]
-      );
-    }
+    setDeleteConfirm(true);
+  }
+
+  function confirmDelete(scope: 'this' | 'upcoming') {
+    setDeleteConfirm(false);
+    onDelete?.(scope);
+    onCancel();
   }
 
   function confirm() {
@@ -214,6 +202,36 @@ export default function ScheduleModal({
   }
 
   return (
+    <>
+    {/* ── Delete confirmation modal ── */}
+    <Modal visible={deleteConfirm} transparent animationType="fade">
+      <View style={styles.deleteOverlay}>
+        <View style={styles.deleteBox}>
+          <Text style={styles.deleteBoxTitle}>
+            {isRepeating ? 'DELETE REPEATING TASK?' : 'DELETE TASK?'}
+          </Text>
+          <Text style={styles.deleteBoxSub}>This cannot be undone.</Text>
+          {isRepeating ? (
+            <>
+              <TouchableOpacity style={styles.deleteThisBtn} onPress={() => confirmDelete('this')}>
+                <Text style={styles.deleteThisTxt}>DELETE ONLY THIS</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.deleteAllBtn} onPress={() => confirmDelete('upcoming')}>
+                <Text style={styles.deleteAllTxt}>DELETE THIS & ALL UPCOMING</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <TouchableOpacity style={styles.deleteAllBtn} onPress={() => confirmDelete('this')}>
+              <Text style={styles.deleteAllTxt}>DELETE TASK</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity style={styles.deleteCancelBtn} onPress={() => setDeleteConfirm(false)}>
+            <Text style={styles.deleteCancelTxt}>CANCEL</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+
     <Modal visible={visible} transparent animationType="slide">
       <KeyboardAvoidingView
         style={styles.kav}
@@ -396,6 +414,7 @@ export default function ScheduleModal({
         </View>
       </KeyboardAvoidingView>
     </Modal>
+    </>
   );
 }
 
@@ -522,7 +541,7 @@ const styles = StyleSheet.create({
   dayToggleTxt: { fontFamily: 'monospace', fontSize: 12, color: GB.dark },
   dayToggleTxtSel: { color: '#E8FFD0', fontWeight: 'bold' },
 
-  // Delete task button
+  // Delete task button (inside the schedule sheet)
   deleteTaskBtn: {
     paddingVertical: 12, borderWidth: 1, borderColor: '#CC3333',
     borderRadius: 8, alignItems: 'center', backgroundColor: '#1a0505',
@@ -530,6 +549,45 @@ const styles = StyleSheet.create({
   },
   deleteTaskBtnTxt: {
     fontFamily: 'monospace', fontSize: 12, color: '#FF5555', letterSpacing: 1, fontWeight: 'bold',
+  },
+
+  // Delete confirmation modal
+  deleteOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.85)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  deleteBox: {
+    backgroundColor: '#0a0505', borderWidth: 2, borderColor: '#CC3333',
+    borderRadius: 10, padding: 24, width: 280, gap: 10, alignItems: 'center',
+  },
+  deleteBoxTitle: {
+    fontFamily: 'monospace', fontSize: 13, fontWeight: 'bold',
+    color: '#FF5555', letterSpacing: 1, textAlign: 'center',
+  },
+  deleteBoxSub: {
+    fontFamily: 'monospace', fontSize: 11, color: GB.dark, marginBottom: 4,
+  },
+  deleteThisBtn: {
+    width: '100%', paddingVertical: 12, borderWidth: 1, borderColor: GB.dark,
+    borderRadius: 8, alignItems: 'center',
+  },
+  deleteThisTxt: {
+    fontFamily: 'monospace', fontSize: 11, color: GB.medium, letterSpacing: 1,
+  },
+  deleteAllBtn: {
+    width: '100%', paddingVertical: 12, backgroundColor: '#3a0505',
+    borderWidth: 1, borderColor: '#CC3333', borderRadius: 8, alignItems: 'center',
+  },
+  deleteAllTxt: {
+    fontFamily: 'monospace', fontSize: 11, fontWeight: 'bold',
+    color: '#FF5555', letterSpacing: 1,
+  },
+  deleteCancelBtn: {
+    width: '100%', paddingVertical: 10, borderWidth: 1, borderColor: GB.dark,
+    borderRadius: 8, alignItems: 'center', marginTop: 2,
+  },
+  deleteCancelTxt: {
+    fontFamily: 'monospace', fontSize: 11, color: GB.dark, letterSpacing: 1,
   },
 
   // Actions
