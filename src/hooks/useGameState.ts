@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Task, TaskPriority, GameState, CatState, MarketItem, QueuedFood } from '../types';
 import {
@@ -255,19 +255,15 @@ export function useGameState() {
     });
   }, [loaded]);
 
-  // ── Hunger drain + health recovery ───────────────────────────────────────────
-  // Tick: every 60 s
-  //  • Hunger drains ~3/hr (−0.05/tick)
-  //  • When full (hunger ≥ 60): health +7 HP over 15 ticks = +7/15 per tick
-  //  • When starving (hunger = 0): health −0.2/tick
+  // ── Hunger drain + starvation damage ────────────────────────────────────────
+  // Tick every 60 s: hunger −0.05/tick (~3/hr)
+  // When starving (hunger = 0): health −0.2/tick
   useEffect(() => {
     function tick() {
       setState(prev => {
         if (!prev.catAlive) return prev;
         const newHunger = clamp((prev.catHunger ?? 80) - 0.05, 0, 100);
-        let healthDelta = 0;
-        if (newHunger <= 0)       healthDelta = -0.2;          // starving → HP drain
-        else if (newHunger >= 60) healthDelta = 7 / 15;        // full → +7 HP / 15 min
+        const healthDelta = newHunger <= 0 ? -0.2 : 0;
         const newHealth = clamp(prev.catHealth + healthDelta, 0, 100);
         const alive = newHealth > 0;
         if (newHunger === prev.catHunger && healthDelta === 0) return prev;
@@ -276,6 +272,51 @@ export function useGameState() {
     }
     if (loaded) tick();
     const id = setInterval(tick, 60_000);
+    return () => clearInterval(id);
+  }, [loaded]);
+
+  // ── Passive health recovery when full ────────────────────────────────────────
+  // Phase 1 (first 12 ticks): +2 HP every 2 minutes
+  // Phase 2 (after 12 ticks): +4 HP every 10 minutes
+  // Both phases reset when hunger drops below 60
+  const recoveryFastCountRef = useRef(0); // ticks delivered in fast phase
+  const recoverySlowCountRef = useRef(0); // 2-min ticks since last slow heal
+
+  useEffect(() => {
+    if (!loaded) return;
+
+    const id = setInterval(() => {
+      setState(prev => {
+        if (!prev.catAlive) return prev;
+        const hunger = prev.catHunger ?? 80;
+
+        // Not full — reset counters, no recovery
+        if (hunger < 60) {
+          recoveryFastCountRef.current = 0;
+          recoverySlowCountRef.current = 0;
+          return prev;
+        }
+
+        // Already at max HP
+        if (prev.catHealth >= 100) return prev;
+
+        const inFastPhase = recoveryFastCountRef.current < 12;
+
+        if (inFastPhase) {
+          recoveryFastCountRef.current++;
+          return { ...prev, catHealth: clamp(prev.catHealth + 2, 0, 100) };
+        } else {
+          // Slow phase: tick every 2 min, heal every 5th tick = every 10 min
+          recoverySlowCountRef.current++;
+          if (recoverySlowCountRef.current >= 5) {
+            recoverySlowCountRef.current = 0;
+            return { ...prev, catHealth: clamp(prev.catHealth + 4, 0, 100) };
+          }
+          return prev;
+        }
+      });
+    }, 2 * 60_000); // every 2 minutes
+
     return () => clearInterval(id);
   }, [loaded]);
 

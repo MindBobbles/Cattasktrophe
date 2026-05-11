@@ -11,29 +11,45 @@ interface Props {
 
 export default function HealthBar({ health, catState, barColor }: Props) {
   const widthAnim = useRef(new Animated.Value(health)).current;
+  const glowAnim  = useRef(new Animated.Value(0)).current;
+  const glowLoop  = useRef<Animated.CompositeAnimation | null>(null);
 
+  // Smooth bar width
   useEffect(() => {
     Animated.timing(widthAnim, {
       toValue: health,
-      duration: 400,
+      duration: 500,
       useNativeDriver: false,
     }).start();
   }, [health]);
 
-  const color = barColor ?? '#9BBC0F';
+  // Glow pulse when fully healed (≥ 100)
+  useEffect(() => {
+    glowLoop.current?.stop();
+    if (health >= 100) {
+      glowAnim.setValue(0);
+      glowLoop.current = Animated.loop(
+        Animated.sequence([
+          Animated.timing(glowAnim, { toValue: 1, duration: 700, useNativeDriver: false }),
+          Animated.timing(glowAnim, { toValue: 0, duration: 700, useNativeDriver: false }),
+        ])
+      );
+      glowLoop.current.start();
+    } else {
+      glowAnim.setValue(0);
+    }
+    return () => glowLoop.current?.stop();
+  }, [health]);
 
-  const hearts =
-    catState === 'happy'     ? '♥ ♥ ♥' :
-    catState === 'sad'       ? '♥ ♥ ♡' :
-    catState === 'depressed' ? '♥ ♡ ♡' :
-    catState === 'cocaine'   ? '♥ ♥ ♥' :
-    catState === 'hospital'  ? '✚ ♡ ♡' : '💀';
+  const color = barColor ?? '#9BBC0F';
+  const hp    = Math.round(health);
 
   return (
     <View style={styles.container}>
       <Text style={styles.label}>HP</Text>
 
       <View style={styles.track}>
+        {/* Main fill bar */}
         <Animated.View
           style={[
             styles.fill,
@@ -46,23 +62,32 @@ export default function HealthBar({ health, catState, barColor }: Props) {
             },
           ]}
         />
-        {/* pixel notches */}
+
+        {/* White shimmer overlay — only visible when full */}
+        <Animated.View
+          style={[
+            styles.glowOverlay,
+            { opacity: glowAnim },
+          ]}
+        />
+
+        {/* Pixel notches */}
         {Array.from({ length: 9 }).map((_, i) => (
           <View key={i} style={[styles.notch, { left: `${(i + 1) * 10}%` }]} />
         ))}
       </View>
 
-      <Text style={[styles.hearts, { color: color }]}>{hearts}</Text>
+      <Text style={[styles.hpNum, { color }]}>{hp}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    width: '90%',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingHorizontal: 16,
   },
   label: {
     fontFamily: 'monospace',
@@ -88,6 +113,15 @@ const styles = StyleSheet.create({
     bottom: 0,
     borderRadius: 1,
   },
+  glowOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(255,255,255,0.45)',
+    borderRadius: 1,
+  },
   notch: {
     position: 'absolute',
     top: 0,
@@ -96,10 +130,11 @@ const styles = StyleSheet.create({
     backgroundColor: GB.darkest,
     opacity: 0.5,
   },
-  hearts: {
+  hpNum: {
     fontFamily: 'monospace',
-    fontSize: 13,
-    width: 52,
+    fontSize: 12,
+    fontWeight: 'bold',
+    width: 36,
     textAlign: 'right',
   },
 });
