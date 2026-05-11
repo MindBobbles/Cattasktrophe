@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  Animated, ScrollView, Alert, Dimensions,
+  Animated, ScrollView, Modal, Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import CatSprite from '../components/CatSprite';
@@ -117,27 +117,13 @@ function formatDate(d: Date): string {
   return `${days[d.getDay()]} ${d.getDate()} ${months[d.getMonth()]}`;
 }
 
-// ─── Tappable Food Item ───────────────────────────────────────────────────────
+// ─── Food Item (tap to select for feeding) ───────────────────────────────────
 
-function TappableFoodItem({
-  food, catName, onFeed,
-}: { food: QueuedFood; catName: string; onFeed: (id: string) => void }) {
-  function handlePress() {
-    Alert.alert(
-      `Feed ${catName}?`,
-      `${food.name} · +${food.hunger > 0 ? food.hunger + ' hunger' : food.health + ' HP'}`,
-      [
-        {
-          text: 'Feed! 🍽️',
-          onPress: () => { playEarnCoin(); onFeed(food.id); },
-        },
-        { text: 'Cancel', style: 'cancel' },
-      ]
-    );
-  }
-
+function FoodItem({
+  food, onSelect,
+}: { food: QueuedFood; onSelect: (food: QueuedFood) => void }) {
   return (
-    <TouchableOpacity style={foodStyles.plate} onPress={handlePress} activeOpacity={0.75}>
+    <TouchableOpacity style={foodStyles.plate} onPress={() => onSelect(food)} activeOpacity={0.75}>
       <View style={foodStyles.plateCircle}>
         <PixelItemIcon id={food.itemId} size={3} />
       </View>
@@ -158,6 +144,32 @@ const foodStyles = StyleSheet.create({
   foodStat: { fontFamily: 'monospace', fontSize: 9, color: GB.medium },
 });
 
+const feedModal = StyleSheet.create({
+  overlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.75)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  box: {
+    backgroundColor: '#0a1a0a', borderWidth: 3, borderColor: GB.dark,
+    borderRadius: 10, padding: 24, alignItems: 'center', gap: 10,
+    minWidth: 240,
+  },
+  iconRow: { marginBottom: 4 },
+  title: { fontFamily: 'monospace', fontSize: 16, fontWeight: 'bold', color: GB.light, letterSpacing: 1 },
+  sub: { fontFamily: 'monospace', fontSize: 12, color: GB.medium, textAlign: 'center' },
+  btnRow: { flexDirection: 'row', gap: 12, marginTop: 6 },
+  cancelBtn: {
+    borderWidth: 2, borderColor: GB.dark, borderRadius: 6,
+    paddingHorizontal: 16, paddingVertical: 10,
+  },
+  cancelTxt: { fontFamily: 'monospace', fontSize: 12, color: GB.dark, letterSpacing: 1 },
+  feedBtn: {
+    backgroundColor: GB.dark, borderWidth: 2, borderColor: GB.medium,
+    borderRadius: 6, paddingHorizontal: 16, paddingVertical: 10,
+  },
+  feedTxt: { fontFamily: 'monospace', fontSize: 12, fontWeight: 'bold', color: GB.light, letterSpacing: 1 },
+});
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function CatScreen({
@@ -171,12 +183,13 @@ export default function CatScreen({
   onToggleSFX, onToggleBGM,
 }: Props) {
 
-  const [now, setNow]             = useState(new Date());
-  const [meowLine, setMeowLine]   = useState('');
+  const [now, setNow]               = useState(new Date());
+  const [meowLine, setMeowLine]     = useState('');
   const [showBubble, setShowBubble] = useState(false);
-  const [showPoop, setShowPoop]   = useState(false);
-  const [showHat, setShowHat]     = useState(false);
+  const [showPoop, setShowPoop]     = useState(false);
+  const [showHat, setShowHat]       = useState(false);
   const [foodOffset, setFoodOffset] = useState(0);
+  const [confirmFood, setConfirmFood] = useState<QueuedFood | null>(null);
 
   const flashAnim  = useRef(new Animated.Value(1)).current;
   const shakeAnim  = useRef(new Animated.Value(0)).current;
@@ -274,9 +287,53 @@ export default function CatScreen({
 
   const visibleFood = foodQueue.slice(foodOffset, foodOffset + 3);
 
+  function handleFeedConfirm() {
+    if (!confirmFood) return;
+    playEarnCoin();
+    onFeedCat(confirmFood.id);
+    setConfirmFood(null);
+  }
+
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
+
+      {/* ── Feed confirmation modal ── */}
+      <Modal visible={!!confirmFood} transparent animationType="fade">
+        <View style={feedModal.overlay}>
+          <View style={feedModal.box}>
+            {confirmFood && (
+              <>
+                <View style={feedModal.iconRow}>
+                  <PixelItemIcon id={confirmFood.itemId} size={4} />
+                </View>
+                <Text style={feedModal.title}>Feed {catName}?</Text>
+                <Text style={feedModal.sub}>
+                  {confirmFood.name}
+                  {'  '}
+                  {confirmFood.hunger > 0
+                    ? `+${confirmFood.hunger} hunger`
+                    : `+${confirmFood.health} HP`}
+                </Text>
+                <View style={feedModal.btnRow}>
+                  <TouchableOpacity
+                    style={feedModal.cancelBtn}
+                    onPress={() => setConfirmFood(null)}
+                  >
+                    <Text style={feedModal.cancelTxt}>CANCEL</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={feedModal.feedBtn}
+                    onPress={handleFeedConfirm}
+                  >
+                    <Text style={feedModal.feedTxt}>FEED 🍽️</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
 
       {/* ── Random Event Banner ── */}
       {pendingEvent && (
@@ -441,11 +498,10 @@ export default function CatScreen({
               </TouchableOpacity>
               <View style={styles.plateItems}>
                 {visibleFood.map(food => (
-                  <TappableFoodItem
+                  <FoodItem
                     key={food.id}
                     food={food}
-                    catName={catName}
-                    onFeed={onFeedCat}
+                    onSelect={setConfirmFood}
                   />
                 ))}
               </View>
