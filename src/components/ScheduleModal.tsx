@@ -42,9 +42,7 @@ function DrumPicker({ values, selected, onChange }: {
 
   return (
     <View style={dStyles.drumWrap}>
-      <View style={dStyles.selBar} pointerEvents="none" />
-      <View style={dStyles.fadeTop} pointerEvents="none" />
-      <View style={dStyles.fadeBot} pointerEvents="none" />
+      {/* Fade overlays — rendered AFTER ScrollView so they paint on top */}
       <ScrollView
         ref={scrollRef}
         style={{ height: DRUM_H }}
@@ -64,7 +62,8 @@ function DrumPicker({ values, selected, onChange }: {
           return (
             <TouchableOpacity
               key={i}
-              style={dStyles.drumItem}
+              // Background highlight lives on the item itself — no z-index conflict
+              style={[dStyles.drumItem, isSel && dStyles.drumItemSel]}
               onPress={() => {
                 onChange(v);
                 scrollRef.current?.scrollTo({ y: i * ITEM_H, animated: true });
@@ -83,6 +82,9 @@ function DrumPicker({ values, selected, onChange }: {
           );
         })}
       </ScrollView>
+      {/* Fades come AFTER so they paint over the scroll items (top/bottom rows only) */}
+      <View style={dStyles.fadeTop} pointerEvents="none" />
+      <View style={dStyles.fadeBot} pointerEvents="none" />
     </View>
   );
 }
@@ -400,26 +402,27 @@ export default function ScheduleModal({
 // ─── Drum Styles ──────────────────────────────────────────────────────────────
 
 const dStyles = StyleSheet.create({
-  drumWrap: { width: 96, height: DRUM_H, overflow: 'hidden', position: 'relative' },
-  selBar: {
-    position: 'absolute',
-    top: ITEM_H * Math.floor(VISIBLE / 2),
-    left: 6, right: 6, height: ITEM_H,
-    backgroundColor: GB.dark, borderRadius: 10, zIndex: 1,
-  } as any,
+  drumWrap: { width: 96, height: DRUM_H, overflow: 'hidden' },
+  // Fades — absolute, rendered after ScrollView in JSX so they paint on top
   fadeTop: {
     position: 'absolute', top: 0, left: 0, right: 0,
-    height: ITEM_H, backgroundColor: '#050f05', opacity: 0.55, zIndex: 2,
+    height: ITEM_H, backgroundColor: '#050f05', opacity: 0.72,
   } as any,
   fadeBot: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
-    height: ITEM_H, backgroundColor: '#050f05', opacity: 0.55, zIndex: 2,
+    height: ITEM_H, backgroundColor: '#050f05', opacity: 0.72,
   } as any,
   drumItem: { height: ITEM_H, alignItems: 'center', justifyContent: 'center' },
-  drumText:     { fontFamily: 'monospace', fontSize: 22, color: '#1a3a1a', letterSpacing: 2 },
+  // Highlight background lives directly on the item — no floating overlay needed
+  drumItemSel: {
+    backgroundColor: GB.dark,
+    borderRadius: 10,
+    marginHorizontal: 4,
+  },
+  drumText:     { fontFamily: 'monospace', fontSize: 22, color: '#2a4a2a', letterSpacing: 2 },
   drumTextSel:  { fontSize: 34, fontWeight: 'bold', color: '#FFFFFF', letterSpacing: 3 },
   drumTextNear: { fontSize: 24, color: '#5a9a5a' },
-  drumTextFar:  { fontSize: 18, color: '#2a4a2a' },
+  drumTextFar:  { fontSize: 18, color: '#1a3a1a' },
 });
 
 // ─── Main Styles ──────────────────────────────────────────────────────────────
