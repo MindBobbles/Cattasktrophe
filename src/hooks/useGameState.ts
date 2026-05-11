@@ -256,14 +256,18 @@ export function useGameState() {
   }, [loaded]);
 
   // ── Hunger drain + health recovery ───────────────────────────────────────────
+  // Tick: every 60 s
+  //  • Hunger drains ~3/hr (−0.05/tick)
+  //  • When full (hunger ≥ 60): health +7 HP over 15 ticks = +7/15 per tick
+  //  • When starving (hunger = 0): health −0.2/tick
   useEffect(() => {
     function tick() {
       setState(prev => {
         if (!prev.catAlive) return prev;
-        const newHunger  = clamp((prev.catHunger ?? 80) - 0.05, 0, 100);
-        let healthDelta  = 0;
-        if (newHunger <= 0)  healthDelta = -0.2;
-        else if (newHunger >= 60) healthDelta = 0.1;
+        const newHunger = clamp((prev.catHunger ?? 80) - 0.05, 0, 100);
+        let healthDelta = 0;
+        if (newHunger <= 0)       healthDelta = -0.2;          // starving → HP drain
+        else if (newHunger >= 60) healthDelta = 7 / 15;        // full → +7 HP / 15 min
         const newHealth = clamp(prev.catHealth + healthDelta, 0, 100);
         const alive = newHealth > 0;
         if (newHunger === prev.catHunger && healthDelta === 0) return prev;
