@@ -754,10 +754,10 @@ const pickerStyles = StyleSheet.create({
   },
   drumTextSel: {
     fontSize: 34, fontWeight: 'bold',
-    color: GB.lightest, letterSpacing: 3,
+    color: '#E8FFD0', letterSpacing: 3,   // bright near-white lime — high contrast on dark green box
   },
-  drumTextNear: { fontSize: 24, color: '#3a6a3a' },
-  drumTextFar:  { fontSize: 18, color: '#152415' },
+  drumTextNear: { fontSize: 24, color: '#5a9a5a' },
+  drumTextFar:  { fontSize: 18, color: '#2a4a2a' },
 
   // Buttons
   actions: { flexDirection: 'row', gap: 8, width: '100%' },
