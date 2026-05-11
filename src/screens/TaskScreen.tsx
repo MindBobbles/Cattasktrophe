@@ -9,6 +9,7 @@ import { Task, TaskPriority } from '../types';
 import { GB } from '../constants/colors';
 import { predictPriority, getCoinsForPriority, priorityLabel } from '../utils/difficultyPredictor';
 import { playClick } from '../utils/sound';
+import { PixelCoin, PixelPriority } from '../components/PixelIcons';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -26,7 +27,8 @@ const PRIORITY: Record<TaskPriority, { border: string; bg: string; label: string
   low:    { border: '#2A6230', bg: '#0a1a0a', label: 'LOW',  dot: '🟢' },
 };
 
-const ITEM_H = 48; // time picker row height
+const ITEM_H    = 56; // time picker row height
+const VISIBLE   = 5;  // rows visible in the drum (odd number — 1 selected + 2 above/below)
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -48,14 +50,16 @@ function sameDay(a: Date, b: Date) {
     a.getFullYear() === b.getFullYear();
 }
 
-// ─── Scroll Picker ────────────────────────────────────────────────────────────
+// ─── Drum Picker ──────────────────────────────────────────────────────────────
 
-function SnapScrollPicker({
+const DRUM_H = ITEM_H * VISIBLE; // total height of the visible drum window
+
+function DrumPicker({
   values, selected, onChange,
 }: { values: number[]; selected: number; onChange: (v: number) => void }) {
   const scrollRef = useRef<ScrollView>(null);
+  const PAD = Math.floor(VISIBLE / 2); // phantom rows above/below for edge scroll
 
-  // Scroll to show selected value whenever it changes (e.g. on modal open)
   useEffect(() => {
     const idx = values.indexOf(selected);
     if (idx >= 0) {
@@ -67,37 +71,52 @@ function SnapScrollPicker({
   }, [selected]);
 
   return (
-    <View style={pickerStyles.pickerWrap}>
-      {/* centre selection highlight */}
-      <View style={pickerStyles.highlight} pointerEvents="none" />
+    <View style={pickerStyles.drumWrap}>
+      {/* Selection highlight bar in the centre */}
+      <View style={pickerStyles.selBar} pointerEvents="none" />
+      {/* Top fade */}
+      <View style={pickerStyles.fadeTop} pointerEvents="none" />
+      {/* Bottom fade */}
+      <View style={pickerStyles.fadeBot} pointerEvents="none" />
+
       <ScrollView
         ref={scrollRef}
-        style={{ height: ITEM_H * 3 }}
+        style={{ height: DRUM_H }}
         showsVerticalScrollIndicator={false}
         snapToInterval={ITEM_H}
         decelerationRate="fast"
         scrollEventThrottle={16}
-        contentContainerStyle={{ paddingVertical: ITEM_H }}
+        contentContainerStyle={{ paddingVertical: ITEM_H * PAD }}
         onMomentumScrollEnd={e => {
           const idx = Math.round(e.nativeEvent.contentOffset.y / ITEM_H);
           const clamped = Math.max(0, Math.min(values.length - 1, idx));
           onChange(values[clamped]);
         }}
       >
-        {values.map((v, i) => (
-          <TouchableOpacity
-            key={i}
-            style={[pickerStyles.pickerItem, v === selected && pickerStyles.pickerItemSel]}
-            onPress={() => {
-              onChange(v);
-              scrollRef.current?.scrollTo({ y: i * ITEM_H, animated: true });
-            }}
-          >
-            <Text style={[pickerStyles.pickerText, v === selected && pickerStyles.pickerTextSel]}>
-              {String(v).padStart(2, '0')}
-            </Text>
-          </TouchableOpacity>
-        ))}
+        {values.map((v, i) => {
+          const dist = Math.abs(values.indexOf(selected) - i);
+          const isSel = v === selected;
+          return (
+            <TouchableOpacity
+              key={i}
+              style={pickerStyles.drumItem}
+              onPress={() => {
+                onChange(v);
+                scrollRef.current?.scrollTo({ y: i * ITEM_H, animated: true });
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={[
+                pickerStyles.drumText,
+                isSel  && pickerStyles.drumTextSel,
+                dist === 1 && pickerStyles.drumTextNear,
+                dist >= 2  && pickerStyles.drumTextFar,
+              ]}>
+                {String(v).padStart(2, '0')}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </ScrollView>
     </View>
   );
@@ -138,15 +157,19 @@ function TimePickerModal({ visible, initialTime, onConfirm, onCancel, onClear }:
     <Modal visible={visible} transparent animationType="fade">
       <View style={pickerStyles.overlay}>
         <View style={pickerStyles.container}>
-          <Text style={pickerStyles.title}>SET TIME</Text>
-          <View style={pickerStyles.row}>
-            <SnapScrollPicker values={HOURS}   selected={hour}   onChange={setHour}   />
-            <Text style={pickerStyles.colon}>:</Text>
-            <SnapScrollPicker values={MINUTES} selected={minute} onChange={setMinute} />
+          {/* Header */}
+          <Text style={pickerStyles.title}>⏰  SET TIME</Text>
+
+          {/* Drum columns */}
+          <View style={pickerStyles.drumRow}>
+            <DrumPicker values={HOURS}   selected={hour}   onChange={setHour}   />
+            <View style={pickerStyles.colonWrap}>
+              <Text style={pickerStyles.colon}>:</Text>
+            </View>
+            <DrumPicker values={MINUTES} selected={minute} onChange={setMinute} />
           </View>
-          <Text style={pickerStyles.preview}>
-            {String(hour).padStart(2,'0')}:{String(minute).padStart(2,'0')}
-          </Text>
+
+          {/* Buttons */}
           <View style={pickerStyles.actions}>
             <TouchableOpacity style={pickerStyles.clearBtn} onPress={onClear}>
               <Text style={pickerStyles.clearBtnText}>CLEAR</Text>
@@ -180,9 +203,13 @@ function DisputeModal({ task, onDisputePriority, onClose }: DisputeModalProps) {
         <View style={disputeStyles.container}>
           <Text style={disputeStyles.title}>DISPUTE PRIORITY</Text>
           <Text style={disputeStyles.taskTitle} numberOfLines={2}>{task.title}</Text>
-          <Text style={disputeStyles.auto}>
-            Auto-assigned: {(task.priority ?? 'medium').toUpperCase()} · {task.reward}🪙
-          </Text>
+          <View style={disputeStyles.autoRow}>
+            <Text style={disputeStyles.auto}>
+              Auto: {(task.priority ?? 'medium').toUpperCase()} ·
+            </Text>
+            <Text style={disputeStyles.auto}> +{task.reward}</Text>
+            <PixelCoin size={2} />
+          </View>
           <Text style={disputeStyles.sub}>Choose the correct priority:</Text>
           <View style={disputeStyles.btnRow}>
             {(['high', 'medium', 'low'] as TaskPriority[]).map(p => (
@@ -191,9 +218,16 @@ function DisputeModal({ task, onDisputePriority, onClose }: DisputeModalProps) {
                 style={[disputeStyles.priorityBtn, { borderColor: PRIORITY[p].border, backgroundColor: PRIORITY[p].bg }]}
                 onPress={() => { playClick(); onDisputePriority(task.id, p); onClose(); }}
               >
+                <PixelPriority level={p} size={3} />
                 <Text style={[disputeStyles.priorityBtnText, { color: PRIORITY[p].border }]}>
-                  {PRIORITY[p].dot}{'\n'}{PRIORITY[p].label}{'\n'}+{getCoinsForPriority(p)}🪙
+                  {PRIORITY[p].label}
                 </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                  <Text style={[disputeStyles.priorityCoins, { color: PRIORITY[p].border }]}>
+                    +{getCoinsForPriority(p)}
+                  </Text>
+                  <PixelCoin size={2} />
+                </View>
               </TouchableOpacity>
             ))}
           </View>
@@ -258,7 +292,12 @@ function SwipeableTaskCard({ task, onToggle, onDelete, onDispute, disabled }: Ca
     return (
       <View style={[styles.card, styles.cardDone, { borderLeftColor: pc.border }]}>
         <Text style={styles.cardDoneText}>✓  {task.title}</Text>
-        {task.reward > 0 && <Text style={styles.cardDoneReward}>+{task.reward}🪙</Text>}
+        {task.reward > 0 && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+            <Text style={styles.cardDoneReward}>+{task.reward}</Text>
+            <PixelCoin size={2} />
+          </View>
+        )}
       </View>
     );
   }
@@ -280,7 +319,10 @@ function SwipeableTaskCard({ task, onToggle, onDelete, onDispute, disabled }: Ca
           <View style={styles.cardMeta}>
             {task.scheduledTime ? <Text style={styles.cardTime}>⏰ {task.scheduledTime}</Text> : null}
             {missed && <Text style={styles.missedBadge}>❌ -5HP</Text>}
-            <Text style={styles.cardReward}>+{task.reward}🪙</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+              <Text style={styles.cardReward}>+{task.reward}</Text>
+              <PixelCoin size={2} />
+            </View>
           </View>
         </View>
 
@@ -502,9 +544,17 @@ export default function TaskScreen({
           {/* Auto priority preview */}
           {title.trim().length > 0 && (
             <View style={[styles.diffRow, { borderLeftWidth: 3, borderLeftColor: PRIORITY[autoPriority].border }]}>
-              <Text style={[styles.diffLabel, { color: PRIORITY[autoPriority].border }]}>
-                {PRIORITY[autoPriority].dot} {priorityLabel(autoPriority)}  ·  🪙 {autoCoins} coins
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <PixelPriority level={autoPriority} size={3} />
+                <Text style={[styles.diffLabel, { color: PRIORITY[autoPriority].border }]}>
+                  {priorityLabel(autoPriority)}
+                </Text>
+                <Text style={[styles.diffLabel, { color: PRIORITY[autoPriority].border }]}>·</Text>
+                <PixelCoin size={2} />
+                <Text style={[styles.diffLabel, { color: PRIORITY[autoPriority].border }]}>
+                  {autoCoins} coins
+                </Text>
+              </View>
               <Text style={styles.diffHint}>auto-detected · ⚡ dispute after adding</Text>
             </View>
           )}
@@ -607,31 +657,90 @@ const styles = StyleSheet.create({
 // ─── Time Picker Styles ───────────────────────────────────────────────────────
 
 const pickerStyles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', alignItems: 'center', justifyContent: 'center' },
-  container: { backgroundColor: '#0a200a', borderWidth: 2, borderColor: GB.dark, borderRadius: 10, padding: 20, alignItems: 'center', width: 260, gap: 14 },
-  title: { fontFamily: 'monospace', fontSize: 14, fontWeight: 'bold', color: GB.light, letterSpacing: 2 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  colon: { fontFamily: 'monospace', fontSize: 28, fontWeight: 'bold', color: GB.medium, marginBottom: 4 },
-  preview: { fontFamily: 'monospace', fontSize: 20, fontWeight: 'bold', color: GB.light, letterSpacing: 3 },
+  overlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.92)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  container: {
+    backgroundColor: '#050f05', borderWidth: 2, borderColor: GB.dark,
+    borderRadius: 16, paddingHorizontal: 24, paddingTop: 22, paddingBottom: 20,
+    alignItems: 'center', width: 300, gap: 20,
+  },
+  title: {
+    fontFamily: 'monospace', fontSize: 13, fontWeight: 'bold',
+    color: GB.dark, letterSpacing: 3, textTransform: 'uppercase',
+  },
 
-  pickerWrap: { width: 72, height: ITEM_H * 3, overflow: 'hidden', position: 'relative' },
-  highlight: {
-    position: 'absolute', top: ITEM_H, left: 0, right: 0, height: ITEM_H,
-    backgroundColor: GB.dark, opacity: 0.4, borderRadius: 4, zIndex: 1,
-    pointerEvents: 'none',
+  // Drum columns row
+  drumRow: { flexDirection: 'row', alignItems: 'center', gap: 0 },
+  colonWrap: {
+    width: 32, height: DRUM_H,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  colon: {
+    fontFamily: 'monospace', fontSize: 36, fontWeight: 'bold',
+    color: GB.light, lineHeight: 44, marginTop: -8,
+  },
+
+  // Individual drum column
+  drumWrap: {
+    width: 96, height: DRUM_H,
+    overflow: 'hidden', position: 'relative',
+  },
+  // Green rounded selection bar in the exact centre
+  selBar: {
+    position: 'absolute',
+    top: ITEM_H * Math.floor(VISIBLE / 2),
+    left: 6, right: 6, height: ITEM_H,
+    backgroundColor: GB.dark,
+    borderRadius: 10, zIndex: 1,
   } as any,
-  pickerItem: { height: ITEM_H, alignItems: 'center', justifyContent: 'center' },
-  pickerItemSel: {},
-  pickerText: { fontFamily: 'monospace', fontSize: 20, color: GB.dark, letterSpacing: 1 },
-  pickerTextSel: { color: GB.light, fontWeight: 'bold', fontSize: 24 },
+  // Top fade — solid overlay, colour matches container bg
+  fadeTop: {
+    position: 'absolute', top: 0, left: 0, right: 0,
+    height: ITEM_H,           // covers the topmost row
+    backgroundColor: '#050f05',
+    opacity: 0.55, zIndex: 2,
+  } as any,
+  // Bottom fade
+  fadeBot: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    height: ITEM_H,           // covers the bottommost row
+    backgroundColor: '#050f05',
+    opacity: 0.55, zIndex: 2,
+  } as any,
 
-  actions: { flexDirection: 'row', gap: 8 },
-  clearBtn: { flex: 1, paddingVertical: 8, borderWidth: 1, borderColor: GB.dark, borderRadius: 4, alignItems: 'center' },
+  drumItem: { height: ITEM_H, alignItems: 'center', justifyContent: 'center' },
+
+  // Text states — distance-based opacity/size
+  drumText: {
+    fontFamily: 'monospace', fontSize: 22,
+    color: '#1a3a1a', letterSpacing: 2,
+  },
+  drumTextSel: {
+    fontSize: 34, fontWeight: 'bold',
+    color: GB.lightest, letterSpacing: 3,
+  },
+  drumTextNear: { fontSize: 24, color: '#3a6a3a' },
+  drumTextFar:  { fontSize: 18, color: '#152415' },
+
+  // Buttons
+  actions: { flexDirection: 'row', gap: 8, width: '100%' },
+  clearBtn: {
+    flex: 1, paddingVertical: 10, borderWidth: 1, borderColor: GB.dark,
+    borderRadius: 8, alignItems: 'center',
+  },
   clearBtnText: { fontFamily: 'monospace', fontSize: 11, color: GB.dark, letterSpacing: 1 },
-  cancelBtn: { flex: 1, paddingVertical: 8, borderWidth: 1, borderColor: GB.dark, borderRadius: 4, alignItems: 'center' },
+  cancelBtn: {
+    flex: 1, paddingVertical: 10, borderWidth: 1, borderColor: GB.dark,
+    borderRadius: 8, alignItems: 'center',
+  },
   cancelBtnText: { fontFamily: 'monospace', fontSize: 11, color: GB.medium, letterSpacing: 1 },
-  confirmBtn: { flex: 1, paddingVertical: 8, backgroundColor: GB.dark, borderRadius: 4, alignItems: 'center' },
-  confirmBtnText: { fontFamily: 'monospace', fontSize: 11, fontWeight: 'bold', color: GB.light, letterSpacing: 1 },
+  confirmBtn: {
+    flex: 1, paddingVertical: 10, backgroundColor: GB.dark,
+    borderRadius: 8, alignItems: 'center',
+  },
+  confirmBtnText: { fontFamily: 'monospace', fontSize: 11, fontWeight: 'bold', color: GB.lightest, letterSpacing: 1 },
 });
 
 // ─── Dispute Styles ───────────────────────────────────────────────────────────
@@ -641,11 +750,13 @@ const disputeStyles = StyleSheet.create({
   container: { backgroundColor: '#0a1a0a', borderWidth: 2, borderColor: GB.dark, borderRadius: 10, padding: 20, width: 290, gap: 10 },
   title: { fontFamily: 'monospace', fontSize: 13, fontWeight: 'bold', color: GB.light, letterSpacing: 2 },
   taskTitle: { fontFamily: 'monospace', fontSize: 12, color: GB.medium, lineHeight: 17 },
+  autoRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   auto: { fontFamily: 'monospace', fontSize: 10, color: GB.dark },
   sub: { fontFamily: 'monospace', fontSize: 11, color: GB.dark, letterSpacing: 0.5 },
   btnRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
-  priorityBtn: { flex: 1, borderWidth: 2, borderRadius: 6, paddingVertical: 10, alignItems: 'center' },
-  priorityBtnText: { fontFamily: 'monospace', fontSize: 12, fontWeight: 'bold', textAlign: 'center', lineHeight: 18 },
+  priorityBtn: { flex: 1, borderWidth: 2, borderRadius: 6, paddingVertical: 10, alignItems: 'center', gap: 4 },
+  priorityBtnText: { fontFamily: 'monospace', fontSize: 11, fontWeight: 'bold', textAlign: 'center', letterSpacing: 1 },
+  priorityCoins: { fontFamily: 'monospace', fontSize: 11, fontWeight: 'bold' },
   closeBtn: { borderWidth: 1, borderColor: GB.dark, borderRadius: 4, paddingVertical: 8, alignItems: 'center', marginTop: 4 },
   closeBtnText: { fontFamily: 'monospace', fontSize: 11, color: GB.dark, letterSpacing: 1 },
 });

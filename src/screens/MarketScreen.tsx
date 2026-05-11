@@ -5,6 +5,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MarketItem } from '../types';
 import { GB } from '../constants/colors';
+import {
+  PixelCoin, PixelItemIcon, PixelPriority,
+} from '../components/PixelIcons';
 
 interface Props {
   items: MarketItem[];
@@ -29,7 +32,8 @@ export default function MarketScreen({ items, coins, catAlive, onBuy }: Props) {
       <View style={styles.header}>
         <Text style={styles.title}>CAT MARKET</Text>
         <View style={styles.coinBadge}>
-          <Text style={styles.coinText}>🪙 {coins}</Text>
+          <PixelCoin size={2} />
+          <Text style={styles.coinText}>{coins}</Text>
         </View>
       </View>
 
@@ -43,7 +47,7 @@ export default function MarketScreen({ items, coins, catAlive, onBuy }: Props) {
       {!catAlive && (
         <View style={styles.deadBanner}>
           <Text style={styles.deadBannerText}>
-            💀  YOUR CAT IS DEAD — buy Revive Potion (50🪙) below
+            💀  YOUR CAT IS DEAD — buy Revive Potion (50c) below
           </Text>
         </View>
       )}
@@ -53,15 +57,23 @@ export default function MarketScreen({ items, coins, catAlive, onBuy }: Props) {
           const canAfford = coins >= item.cost;
           return (
             <View key={item.id} style={styles.card}>
-              <Text style={styles.itemEmoji}>{item.emoji}</Text>
+              {/* Pixel item icon */}
+              <View style={styles.itemIconBox}>
+                <PixelItemIcon id={item.id} size={3} />
+              </View>
+
               <View style={styles.itemInfo}>
                 <Text style={styles.itemName}>{item.name}</Text>
                 <Text style={styles.itemDesc}>{item.description}</Text>
               </View>
+
               <View style={styles.itemRight}>
-                <Text style={[styles.itemCost, !canAfford && styles.itemCostRed]}>
-                  🪙 {item.cost}
-                </Text>
+                <View style={styles.costRow}>
+                  <PixelCoin size={2} />
+                  <Text style={[styles.itemCost, !canAfford && styles.itemCostRed]}>
+                    {item.cost}
+                  </Text>
+                </View>
                 <TouchableOpacity
                   style={[styles.buyBtn, !canAfford && styles.buyBtnDisabled]}
                   onPress={() => handleBuy(item.id)}
@@ -76,10 +88,19 @@ export default function MarketScreen({ items, coins, catAlive, onBuy }: Props) {
           );
         })}
 
-        <Text style={styles.hint}>
-          Complete tasks to earn coins.{'\n'}
-          🔴 High = 5🪙  ·  🟡 Medium = 3🪙  ·  🟢 Low = 2🪙
-        </Text>
+        {/* Priority legend */}
+        <View style={styles.legendBox}>
+          <Text style={styles.legendTitle}>TASK REWARDS</Text>
+          {(['high', 'medium', 'low'] as const).map(lvl => (
+            <View key={lvl} style={styles.legendRow}>
+              <PixelPriority level={lvl} size={3} />
+              <Text style={styles.legendText}>
+                {lvl.toUpperCase()} = {lvl === 'high' ? 10 : lvl === 'medium' ? 5 : 3}
+              </Text>
+              <PixelCoin size={2} />
+            </View>
+          ))}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -98,6 +119,7 @@ const styles = StyleSheet.create({
     color: GB.light, letterSpacing: 2,
   },
   coinBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
     backgroundColor: '#1a2e0a', borderWidth: 1,
     borderColor: GB.dark, borderRadius: 12,
     paddingHorizontal: 10, paddingVertical: 4,
@@ -126,12 +148,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#0a200a', borderWidth: 1, borderColor: GB.dark,
     borderRadius: 6, padding: 12, gap: 12,
   },
-  itemEmoji: { fontSize: 28, width: 36, textAlign: 'center' },
-  itemInfo: { flex: 1, gap: 3 },
+  itemIconBox: {
+    width: 40, height: 40, flexShrink: 0,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  itemInfo: { flex: 1, minWidth: 0, gap: 3 },
   itemName: { fontFamily: 'monospace', fontSize: 13, fontWeight: 'bold', color: GB.light },
   itemDesc: { fontFamily: 'monospace', fontSize: 11, color: GB.dark },
 
   itemRight: { alignItems: 'center', gap: 6 },
+  costRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   itemCost: { fontFamily: 'monospace', fontSize: 12, color: GB.medium },
   itemCostRed: { color: '#CC4444' },
 
@@ -146,8 +172,15 @@ const styles = StyleSheet.create({
   },
   buyBtnTextDim: { color: GB.dark },
 
-  hint: {
-    fontFamily: 'monospace', fontSize: 11, color: GB.dark,
-    textAlign: 'center', lineHeight: 18, marginTop: 8,
+  legendBox: {
+    marginTop: 8, paddingTop: 12,
+    borderTopWidth: 1, borderTopColor: GB.dark,
+    gap: 8, alignItems: 'center',
   },
+  legendTitle: {
+    fontFamily: 'monospace', fontSize: 10, color: GB.dark,
+    letterSpacing: 2, marginBottom: 4,
+  },
+  legendRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  legendText: { fontFamily: 'monospace', fontSize: 11, color: GB.dark },
 });

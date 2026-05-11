@@ -10,7 +10,11 @@ import { CatState, QueuedFood } from '../types';
 import {
   GB, STATE_SCREEN_BG, STATE_LABEL_COLOR, getCatEvolution,
 } from '../constants/colors';
-import { playMeow, playClick, startBGM, stopBGM, playEarnCoin } from '../utils/sound';
+import { playMeow, playClick, playEarnCoin } from '../utils/sound';
+import {
+  PixelGrid, PixelCoin, PixelBowl, PixelHeart, PixelItemIcon,
+  PixelNote, PixelNoteOff, PixelSpeaker, PixelMute,
+} from '../components/PixelIcons';
 
 const { height: SH } = Dimensions.get('window');
 
@@ -113,26 +117,6 @@ function formatDate(d: Date): string {
   return `${days[d.getDay()]} ${d.getDate()} ${months[d.getMonth()]}`;
 }
 
-// ─── Pixel Grid ───────────────────────────────────────────────────────────────
-
-function PixelGrid({ grid, colors, cellSize }: {
-  grid: number[][];
-  colors: Record<number, string>;
-  cellSize: number;
-}) {
-  return (
-    <View>
-      {grid.map((row, ri) => (
-        <View key={ri} style={{ flexDirection: 'row' }}>
-          {row.map((cell, ci) => (
-            <View key={ci} style={{ width: cellSize, height: cellSize, backgroundColor: colors[cell] ?? 'transparent' }} />
-          ))}
-        </View>
-      ))}
-    </View>
-  );
-}
-
 // ─── Draggable Food Item ──────────────────────────────────────────────────────
 
 function DraggableFoodItem({ food, onFeed }: { food: QueuedFood; onFeed: (id: string) => void }) {
@@ -172,12 +156,13 @@ function DraggableFoodItem({ food, onFeed }: { food: QueuedFood; onFeed: (id: st
       {...panResponder.panHandlers}
     >
       <View style={foodStyles.plateCircle}>
-        <Text style={foodStyles.foodEmoji}>{food.emoji}</Text>
+        <PixelItemIcon id={food.id} size={3} />
       </View>
       <Text style={foodStyles.foodName} numberOfLines={1}>{food.name}</Text>
-      <Text style={foodStyles.foodStat}>
-        {food.hunger > 0 ? `+${food.hunger}🍽️` : `+${food.health}❤️`}
-      </Text>
+      <View style={foodStyles.foodStatRow}>
+        <Text style={foodStyles.foodStat}>+{food.hunger > 0 ? food.hunger : food.health}</Text>
+        {food.hunger > 0 ? <PixelBowl size={2} /> : <PixelHeart size={2} />}
+      </View>
     </Animated.View>
   );
 }
@@ -185,9 +170,9 @@ function DraggableFoodItem({ food, onFeed }: { food: QueuedFood; onFeed: (id: st
 const foodStyles = StyleSheet.create({
   plate: { alignItems: 'center', gap: 2, width: 72, zIndex: 10 },
   plateCircle: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#1a3a1a', borderWidth: 3, borderColor: GB.dark, alignItems: 'center', justifyContent: 'center' },
-  foodEmoji: { fontSize: 28 },
   foodName: { fontFamily: 'monospace', fontSize: 9, color: GB.dark, textAlign: 'center', width: 70 },
-  foodStat: { fontFamily: 'monospace', fontSize: 9, color: GB.medium, textAlign: 'center' },
+  foodStatRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  foodStat: { fontFamily: 'monospace', fontSize: 9, color: GB.medium },
 });
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -222,13 +207,6 @@ export default function CatScreen({
     const id = setInterval(() => setNow(new Date()), 15_000);
     return () => clearInterval(id);
   }, []);
-
-  // ── BGM — controlled by bgmEnabled prop ─────────────────────────────────────
-  useEffect(() => {
-    if (bgmEnabled) startBGM();
-    else stopBGM();
-    return () => stopBGM();
-  }, [bgmEnabled]);
 
   // ── Hospital/deathbed flash ─────────────────────────────────────────────────
   useEffect(() => {
@@ -349,16 +327,17 @@ export default function CatScreen({
               style={[styles.ctrlBtn, !bgmEnabled && styles.ctrlOff]}
               onPress={() => { playClick(); onToggleBGM(); }}
             >
-              <Text style={styles.ctrlBtnText}>{bgmEnabled ? '♪' : '♪̶'}</Text>
+              {bgmEnabled ? <PixelNote size={2} /> : <PixelNoteOff size={2} />}
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.ctrlBtn, !sfxEnabled && styles.ctrlOff]}
               onPress={() => { onToggleSFX(); }}
             >
-              <Text style={styles.ctrlBtnText}>{sfxEnabled ? '🔊' : '🔇'}</Text>
+              {sfxEnabled ? <PixelSpeaker size={2} /> : <PixelMute size={2} />}
             </TouchableOpacity>
             <View style={styles.coinBadge}>
-              <Text style={styles.coinText}>🪙 {coins}</Text>
+              <PixelCoin size={2} />
+              <Text style={styles.coinText}>{coins}</Text>
             </View>
           </View>
         </View>
@@ -442,7 +421,7 @@ export default function CatScreen({
 
         {/* ── Hunger bar ── */}
         <View style={styles.statBarRow}>
-          <Text style={styles.statBarLabel}>🍽️</Text>
+          <View style={styles.statBarLabel}><PixelBowl size={2} /></View>
           <View style={styles.statBarTrack}>
             <View style={[styles.statBarFill, { width: `${hungerPercent}%`, backgroundColor: hungerColor }]} />
             {Array.from({ length: 9 }).map((_, i) => (
@@ -549,6 +528,7 @@ const styles = StyleSheet.create({
   ctrlBtnText: { fontSize: 13 },
 
   coinBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
     backgroundColor: '#1a2e0a', borderWidth: 1, borderColor: GB.dark,
     borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4,
   },
@@ -598,7 +578,7 @@ const styles = StyleSheet.create({
 
   // Hunger bar (mirrors HealthBar layout)
   statBarRow: { width: '90%', flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 0 },
-  statBarLabel: { fontSize: 14, width: 24, textAlign: 'center' },
+  statBarLabel: { width: 20, alignItems: 'center', justifyContent: 'center' },
   statBarTrack: { flex: 1, height: 16, backgroundColor: GB.darkest, borderWidth: 2, borderColor: GB.dark, borderRadius: 2, overflow: 'hidden', position: 'relative' },
   statBarFill: { position: 'absolute', top: 0, left: 0, bottom: 0, borderRadius: 1 },
   statBarNotch: { position: 'absolute', top: 0, bottom: 0, width: 2, backgroundColor: GB.darkest, opacity: 0.5 },

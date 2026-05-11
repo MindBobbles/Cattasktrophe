@@ -7,7 +7,7 @@ import {
 import {
   requestNotificationPermission, sendNotification, scheduleNightlyReminder,
 } from '../utils/notifications';
-import { setSFXEnabled, setBGMEnabled } from '../utils/sound';
+import { setSFXEnabled } from '../utils/sound';
 
 const STORAGE_KEY = '@cat_task_trophe_v3';
 
@@ -405,11 +405,7 @@ export function useGameState() {
   }, []);
 
   const toggleBGM = useCallback(() => {
-    setState(prev => {
-      const next = !prev.bgmEnabled;
-      setBGMEnabled(next);
-      return { ...prev, bgmEnabled: next };
-    });
+    setState(prev => ({ ...prev, bgmEnabled: !prev.bgmEnabled }));
   }, []);
 
   // ── Derived ───────────────────────────────────────────────────────────────────

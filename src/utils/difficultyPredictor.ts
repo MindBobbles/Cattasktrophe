@@ -1,14 +1,14 @@
 // Keyword-based priority predictor — 3 tiers only
-// HIGH   = 5 coins  (urgent / hard / important tasks)
-// MEDIUM = 3 coins  (moderate effort tasks)
-// LOW    = 2 coins  (easy / routine tasks)
+// HIGH   = 10 coins  (urgent / hard / important tasks)
+// MEDIUM = 5  coins  (moderate effort tasks)
+// LOW    = 3  coins  (easy / routine tasks)
 
 export type AutoPriority = 'high' | 'medium' | 'low';
 
 export const PRIORITY_COINS: Record<AutoPriority, number> = {
-  high:   5,
-  medium: 3,
-  low:    2,
+  high:   10,
+  medium: 5,
+  low:    3,
 };
 
 // ── Phrases (checked first — higher specificity) ───────────────────────────
@@ -34,13 +34,24 @@ const HIGH_KEYWORDS = [
   'surgery', 'doctor', 'appointment', 'bill', 'payment', 'tax', 'report',
   'emergency', 'bake', 'coding', 'programming', 'study', 'exercise',
   'workout', 'gym', 'marathon', 'triathlon', 'biryani', 'lasagna', 'lasagne',
+  // Common physical activities
+  'run', 'running', 'training', 'practice', 'sprint', 'race', 'hike', 'hiking',
+  'lifting', 'crossfit', 'bootcamp',
+  // Academic / work deliverables
+  'homework', 'coursework', 'revision', 'due', 'submit', 'draft',
+  'implement', 'build', 'develop', 'debug', 'deploy',
 ];
 
 const MEDIUM_KEYWORDS = [
-  'meeting', 'call', 'email', 'review', 'grocery', 'shopping',
+  'meeting', 'call', 'email', 'review', 'grocery', 'groceries', 'shopping',
   'swimming', 'cycling', 'yoga', 'pilates', 'bjj', 'mma', 'jog',
   'cooking', 'cook', 'laundry', 'cleaning', 'clean', 'read', 'meditate',
   'journal', 'stretch', 'walk', 'tidy', 'dishes', 'reply',
+  // Organisational tasks
+  'organise', 'organize', 'plan', 'schedule', 'arrange', 'sort',
+  'errand', 'errands', 'chore', 'chores',
+  // Light fixes / maintenance
+  'fix', 'repair', 'water', 'charge', 'backup', 'update', 'install',
 ];
 
 // ── Main predictor ─────────────────────────────────────────────────────────

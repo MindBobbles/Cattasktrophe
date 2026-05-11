@@ -153,8 +153,15 @@ export function stopBGM() {
   if (bgmTimerId) { clearInterval(bgmTimerId); bgmTimerId = null; }
   const c = ctx();
   if (bgmGain && c) {
-    bgmGain.gain.linearRampToValueAtTime(0, c.currentTime + 0.4);
-    setTimeout(() => { bgmGain = null; }, 500);
+    // Capture locally so a rapid startBGM() call gets a fresh node,
+    // not the one being faded out. Null the module ref immediately.
+    const gainToFade = bgmGain;
+    bgmGain = null;
+    gainToFade.gain.cancelScheduledValues(c.currentTime);
+    gainToFade.gain.setValueAtTime(gainToFade.gain.value, c.currentTime);
+    gainToFade.gain.linearRampToValueAtTime(0, c.currentTime + 0.35);
+  } else {
+    bgmGain = null;
   }
 }
 

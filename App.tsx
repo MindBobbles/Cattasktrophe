@@ -11,7 +11,7 @@ import HauntedOverlay from './src/components/HauntedOverlay';
 import { useGameState, MARKET_ITEMS } from './src/hooks/useGameState';
 import { rollRandomEvent } from './src/utils/randomEvents';
 import { sendNotification } from './src/utils/notifications';
-import { playClick } from './src/utils/sound';
+import { playClick, startBGM, stopBGM } from './src/utils/sound';
 import { GB } from './src/constants/colors';
 import { TaskPriority } from './src/types';
 
@@ -48,6 +48,13 @@ export default function App() {
 
     return () => clearTimeout(t);
   }, [activeTab, game.loaded]);
+
+  // ── BGM — app-level so it survives tab switches ───────────────────────────────
+  useEffect(() => {
+    if (!game.loaded) return;
+    if (game.bgmEnabled) startBGM(); else stopBGM();
+    return () => stopBGM();
+  }, [game.bgmEnabled, game.loaded]);
 
   // ── Loading ───────────────────────────────────────────────────────────────────
   if (!game.loaded) {
