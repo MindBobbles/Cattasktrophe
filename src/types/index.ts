@@ -1,5 +1,6 @@
 export type CatState =
   | 'happy'
+  | 'okay'       // 50–69 HP — content but not thriving
   | 'sad'
   | 'depressed'
   | 'cocaine'    // catnip craze / hyper

@@ -288,6 +288,7 @@ const DEATHBED_B: number[][] = [
 
 export const SPRITES: Record<CatState, number[][][]> = {
   happy:     [HAPPY_A,     HAPPY_B],
+  okay:      [HAPPY_A,     HAPPY_B],   // same frames as happy, calmer animation
   sad:       [SAD_A,       SAD_B],
   depressed: [DEPRESSED_A, DEPRESSED_B],
   cocaine:   [COCAINE_A,   COCAINE_B],

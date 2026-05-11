@@ -71,7 +71,8 @@ export function getCatEvolution(level: number): { stage: string; emoji: string; 
 
 export const STATE_SCREEN_BG: Record<string, string> = {
   happy:     '#9BBC0F',
-  sad:       '#8BAC0F',
+  okay:      '#8BAC0F',
+  sad:       '#708A50',
   depressed: '#6A8060',
   cocaine:   '#C8D820',
   hospital:  '#A8C8B0',
@@ -80,7 +81,8 @@ export const STATE_SCREEN_BG: Record<string, string> = {
 
 export const STATE_LABEL_COLOR: Record<string, string> = {
   happy:     '#0F380F',
-  sad:       '#1A2A10',
+  okay:      '#1A2A10',
+  sad:       '#1E2E14',
   depressed: '#2A3820',
   cocaine:   '#4A5000',
   hospital:  '#204020',

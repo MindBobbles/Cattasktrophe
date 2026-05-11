@@ -98,10 +98,11 @@ function next8Days(): Date[] {
 export function getCatState(health: number, alive: boolean, override: CatState | null): CatState {
   if (override) return override;
   if (!alive)       return 'deathbed';
-  if (health >= 80) return 'happy';
-  if (health >= 60) return 'sad';
-  if (health >= 35) return 'depressed';
-  if (health >= 15) return 'hospital';
+  if (health >= 70) return 'happy';
+  if (health >= 50) return 'okay';
+  if (health >= 35) return 'sad';
+  if (health >= 20) return 'depressed';
+  if (health >= 10) return 'hospital';
   return 'deathbed';
 }
 

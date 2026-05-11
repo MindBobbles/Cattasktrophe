@@ -8,7 +8,8 @@ const PIXEL = 10;
 
 const ANIM_SPEED: Record<CatState, number> = {
   happy:     900,
-  sad:       1100,
+  okay:      1100,   // slightly calmer than happy
+  sad:       1400,
   depressed: 1600,
   cocaine:   250,
   hospital:  1800,
@@ -17,8 +18,9 @@ const ANIM_SPEED: Record<CatState, number> = {
 
 const BOUNCE: Record<CatState, number> = {
   happy:     4,
-  sad:       2,
-  depressed: 1,
+  okay:      2,   // gentle bounce — content but not excited
+  sad:       1,
+  depressed: 0,
   cocaine:   6,
   hospital:  0,
   deathbed:  0,

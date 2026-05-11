@@ -26,9 +26,10 @@ const MEOW_LINES = [
 ];
 
 const STATUS: Record<CatState, { title: string; sub: string }> = {
-  happy:     { title: 'PURRING ♥',      sub: 'Happy and fed! Keep the tasks going.' },
-  sad:       { title: 'SAD...',          sub: 'Needs food. Check the plate below.' },
-  depressed: { title: 'DEPRESSED',       sub: 'Low health AND hungry. Feed immediately.' },
+  happy:     { title: 'PURRING ♥',      sub: 'Happy and thriving! Keep the tasks going.' },
+  okay:      { title: 'OKAY~',          sub: 'Doing alright. Keep completing tasks to cheer them up.' },
+  sad:       { title: 'SAD...',          sub: 'Feeling down. Complete tasks and feed them.' },
+  depressed: { title: 'DEPRESSED',       sub: 'Low health. Feed and complete tasks immediately.' },
   cocaine:   { title: 'CATNIP CRAZE!!', sub: 'Your cat is absolutely ZOOMING right now.' },
   hospital:  { title: 'IN HOSPITAL',    sub: 'Critical condition. Buy medicine in market.' },
   deathbed:  { title: '💀 FLATLINE',    sub: 'Your cat died. Buy a Revive Potion (50🪙).' },
@@ -275,6 +276,7 @@ export default function CatScreen({
 
   const healthBarColor =
     catState === 'happy'     ? GB.light   :
+    catState === 'okay'      ? '#8BAC0F'  :
     catState === 'sad'       ? GB.medium  :
     catState === 'depressed' ? '#6A8060'  :
     catState === 'cocaine'   ? '#C8D820'  :
