@@ -432,7 +432,13 @@ export function useGameState() {
           ? { ...t, completed: true, completedAt: new Date().toISOString() }
           : t
       );
-      return { ...prev, tasks, coins: clamp(prev.coins + task.reward, 0, 9999) };
+      return {
+        ...prev,
+        tasks,
+        coins:    clamp(prev.coins + task.reward, 0, 9999),
+        catXP:    prev.catXP + 5,
+        catHealth: clamp(prev.catHealth + 5, 0, 100),
+      };
     });
   }, []);
 
